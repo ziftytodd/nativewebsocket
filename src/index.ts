@@ -5,7 +5,7 @@ import type { NativeWebsocketPlugin } from './definitions';
 const NativeWebsocket = registerPlugin<NativeWebsocketPlugin>(
   'NativeWebsocket',
   {
-    web: () => import('./web').then(m => new m.NativeWebsocketWeb()),
+    //web: () => import('./web').then(m => new m.NativeWebsocketWeb()),
   },
 );
 
