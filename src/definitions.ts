@@ -7,6 +7,7 @@ export interface ConnectedState {
 export interface DisconnectedState {
   reason?: string;
   code?: string;
+  error?: string;
 }
 
 export interface MessageEvent {
