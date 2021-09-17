@@ -25,6 +25,8 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 "reason": reason,
                 "code": code
             ])
+            socket?.delegate = nil
+            socket?.disconnect()
             socket = nil
             isConnected = false
         case .text(let string):
@@ -43,10 +45,14 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
             break
         case .cancelled:
             isConnected = false
+            socket?.delegate = nil
+            socket?.disconnect()
             socket = nil
             self.notifyListeners("disconnected", data: [ "reason": "cancelled" ])
         case .error(let error):
             isConnected = false
+            socket?.delegate = nil
+            socket?.disconnect()
             socket = nil
             print("NWS: ERROR on socket error=\(error)")
             self.notifyListeners("disconnected", data: [
@@ -58,6 +64,7 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
     
     
     @objc func connect(_ call: CAPPluginCall) {
+        print("NWS: Starting connect")
         if (!isConnected) {
             print("NWS: Connecting to URL \(call.getString("url"))")
             var request = URLRequest(url: URL(string: call.getString("url")!)!)
@@ -86,12 +93,14 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
     }
 
     @objc func disconnect(_ call: CAPPluginCall) {
+        print("NWS: Starting disconnect")
         if (isConnected) {
             if let sock = socket {
                 sock.disconnect()
-                call.resolve([ "disconnected": true ])
                 isConnected = false
+                socket?.delegate = nil
                 socket = nil
+                call.resolve([ "disconnected": true ])
             } else {
                 call.reject("Websocket not connected")
             }
