@@ -78,10 +78,10 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 sock.write(string: call.getString("message")!)
                 call.resolve([ "sent": true ])
             } else {
-                call.reject("No socket connected")
+                call.reject("Websocket not connected")
             }
         } else {
-            call.reject("No socket connected")
+            call.reject("Websocket not connected")
         }
     }
 
@@ -90,11 +90,13 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
             if let sock = socket {
                 sock.disconnect()
                 call.resolve([ "disconnected": true ])
+                isConnected = false
+                socket = nil
             } else {
-                call.reject("No socket connected")
+                call.reject("Websocket not connected")
             }
         } else {
-            call.reject("No socket connected")
+            call.reject("Websocket not connected")
         }
     }
 }

@@ -87,7 +87,7 @@ public class NativeWebsocketPlugin extends Plugin {
                     notifyListeners("disconnected", ret);
                 }
             };
-            
+
             ws.connect();
 
             call.resolve(new JSObject());
@@ -99,19 +99,27 @@ public class NativeWebsocketPlugin extends Plugin {
     @PluginMethod
     public void send(PluginCall call) {
         if (isConnected) {
-            ws.send(call.getString("message"));
-            JSObject ret = new JSObject();
-            ret.put("sent", true);
-            call.resolve(ret);
+            try {
+                ws.send(call.getString("message"));
+                JSObject ret = new JSObject();
+                ret.put("sent", true);
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject("Exception occurred: " + e.getMessage());
+            }
         } else {
-            call.resolve(new JSObject());
+            call.reject("Websocket not connected");
         }
     }
 
     @PluginMethod
     public void disconnect(PluginCall call) {
         if (isConnected) {
-            ws.close();
+            try {
+                ws.close();
+            } catch (Exception ignored) {}
+            isConnected = false;
+            ws = null;
         }
 
         call.resolve(new JSObject());
