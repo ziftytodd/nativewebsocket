@@ -30,7 +30,13 @@ public class NativeWebsocketPlugin extends Plugin {
 
     @PluginMethod
     public void connect(PluginCall call) {
-        if (isConnected) return;
+        if (isConnected) {
+            try {
+                ws.close();
+            } catch (Exception ignored) {}
+            isConnected = false;
+            ws = null;
+        }
 
         String url = call.getString("url");
         Map<String, String> headers = new HashMap<>();

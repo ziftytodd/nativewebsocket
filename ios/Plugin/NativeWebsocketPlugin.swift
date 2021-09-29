@@ -65,16 +65,24 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
     
     @objc func connect(_ call: CAPPluginCall) {
         print("NWS: Starting connect")
-        if (!isConnected) {
-            print("NWS: Connecting to URL \(call.getString("url"))")
-            var request = URLRequest(url: URL(string: call.getString("url")!)!)
-            request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
-            request.timeoutInterval = 10
-            socket = WebSocket(request: request)
-            socket!.delegate = self
-            socket!.connect()
-            print("NWS: Connect started")
+        
+        if (isConnected) {
+            if let sock = socket {
+                sock.disconnect()
+                isConnected = false
+                socket?.delegate = nil
+                socket = nil
+            }
         }
+        
+        print("NWS: Connecting to URL \(call.getString("url"))")
+        var request = URLRequest(url: URL(string: call.getString("url")!)!)
+        request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
+        request.timeoutInterval = 10
+        socket = WebSocket(request: request)
+        socket!.delegate = self
+        socket!.connect()
+        print("NWS: Connect started")
         
         call.resolve()
     }
