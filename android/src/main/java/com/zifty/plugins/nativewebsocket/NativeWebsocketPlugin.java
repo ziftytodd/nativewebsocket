@@ -32,7 +32,7 @@ public class NativeWebsocketPlugin extends Plugin {
     public void connect(PluginCall call) {
         if (isConnected) {
             try {
-                ws.close();
+                if (ws != null) ws.close();
             } catch (Exception ignored) {}
             isConnected = false;
             ws = null;
@@ -104,7 +104,7 @@ public class NativeWebsocketPlugin extends Plugin {
 
     @PluginMethod
     public void send(PluginCall call) {
-        if (isConnected) {
+        if (isConnected && (ws != null)) {
             try {
                 ws.send(call.getString("message"));
                 JSObject ret = new JSObject();
@@ -122,7 +122,9 @@ public class NativeWebsocketPlugin extends Plugin {
     public void disconnect(PluginCall call) {
         if (isConnected) {
             try {
-                ws.close();
+                if (ws != null) {
+                    ws.close();
+                }
             } catch (Exception ignored) {}
             isConnected = false;
             ws = null;
