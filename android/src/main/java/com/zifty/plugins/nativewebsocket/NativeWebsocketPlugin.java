@@ -71,26 +71,12 @@ public class NativeWebsocketPlugin extends Plugin {
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    isConnected = false;
-                    ws = null;
-
-                    JSObject ret = new JSObject();
-                    ret.put("disconnected", true);
-                    ret.put("reason", reason);
-                    ret.put("code", code);
-                    notifyListeners("disconnected", ret);
+                    handleDisconnect(reason, code, null);
                 }
 
                 @Override
                 public void onError(Exception ex) {
-                    isConnected = false;
-                    ws = null;
-
-                    JSObject ret = new JSObject();
-                    ret.put("disconnected", true);
-                    ret.put("reason", "error");
-                    ret.put("error", ex.getMessage());
-                    notifyListeners("disconnected", ret);
+                    handleDisconnect("error", 0, ex.getMessage());
                 }
             };
 
@@ -100,6 +86,26 @@ public class NativeWebsocketPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Exception occurred: " + e.getMessage());
         }
+    }
+
+    private void handleDisconnect(String reason, int code, String error) {
+        if (isConnected || (ws != null)) {
+            if (ws != null) {
+                try {
+                    ws.close();
+                } catch (Exception ignored) {}
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("disconnected", true);
+            if (reason != null) ret.put("reason", reason);
+            ret.put("code", code);
+            if (error != null) ret.put("error", error);
+            notifyListeners("disconnected", ret);
+        }
+
+        isConnected = false;
+        ws = null;
     }
 
     @PluginMethod
@@ -120,15 +126,22 @@ public class NativeWebsocketPlugin extends Plugin {
 
     @PluginMethod
     public void disconnect(PluginCall call) {
-        if (isConnected) {
-            try {
-                if (ws != null) {
+        if (isConnected || (ws != null)) {
+            if (ws != null) {
+                try {
                     ws.close();
-                }
-            } catch (Exception ignored) {}
-            isConnected = false;
-            ws = null;
+                } catch (Exception ignored) {}
+            }
         }
+
+        isConnected = false;
+        ws = null;
+
+        JSObject ret = new JSObject();
+        ret.put("disconnected", true);
+        ret.put("reason", "Called disconnect");
+        ret.put("code", -1);
+        notifyListeners("disconnected", ret);
 
         call.resolve(new JSObject());
     }
