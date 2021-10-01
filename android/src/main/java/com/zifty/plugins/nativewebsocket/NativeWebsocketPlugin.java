@@ -117,15 +117,22 @@ public class NativeWebsocketPlugin extends Plugin {
                 ret.put("sent", true);
                 call.resolve(ret);
             } catch (Exception e) {
+                forceDisconnect();
                 call.reject("Exception occurred: " + e.getMessage());
             }
         } else {
+            forceDisconnect();
             call.reject("Websocket not connected");
         }
     }
 
     @PluginMethod
     public void disconnect(PluginCall call) {
+        forceDisconnect();
+        call.resolve(new JSObject());
+    }
+
+    private void forceDisconnect() {
         if (isConnected || (ws != null)) {
             if (ws != null) {
                 try {
@@ -142,7 +149,5 @@ public class NativeWebsocketPlugin extends Plugin {
         ret.put("reason", "Called disconnect");
         ret.put("code", -1);
         notifyListeners("disconnected", ret);
-
-        call.resolve(new JSObject());
     }
 }

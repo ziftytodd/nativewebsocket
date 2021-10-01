@@ -102,15 +102,23 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 sock.write(string: call.getString("message")!)
                 call.resolve([ "sent": true ])
             } else {
+                forceDisconnect()
                 call.reject("Websocket not connected")
             }
         } else {
+            forceDisconnect()
             call.reject("Websocket not connected")
         }
     }
 
     @objc func disconnect(_ call: CAPPluginCall) {
         print("NWS: Starting disconnect")
+        forceDisconnect()
+        call.resolve([ "disconnected": true ])
+    }
+
+    func forceDisconnect() {
+        print("NWS: Forcing disconnect")
         if (isConnected) {
             if let sock = socket {
                 sock.disconnect()
@@ -126,6 +134,5 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
             "reason": "Called disconnect",
             "code": -1
         ])
-        call.resolve([ "disconnected": true ])
     }
 }
