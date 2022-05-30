@@ -1,12 +1,86 @@
-// import { WebPlugin } from '@capacitor/core';
+import {WebPlugin} from '@capacitor/core';
+
+import type { NativeWebsocketPlugin } from './definitions';
+
+export class NativeWebsocketWeb
+  extends WebPlugin
+  implements NativeWebsocketPlugin {
+
+    private webSocket: WebSocket | null = null;
+
+    async connect(options: { url: string }): Promise<void> {
+        this.webSocket = new WebSocket(options.url);
+        this.webSocket.binaryType = 'arraybuffer';
+
+        this.webSocket.onopen = () => {
+            // Connected!
+            console.log('[WS] Connected');
+            this.notifyListeners('connected', { connected: true } );
+        };
+
+        this.webSocket.onmessage = async (msg) => {
+            // Got message
+            console.log('[WS] Message received', msg);
+            if (msg.data instanceof ArrayBuffer) {
+                this.notifyListeners('message', { data: msg.data, binary: true });
+            } else {
+                this.notifyListeners('message', { data: msg.data, binary: false });
+            }
+        };
+
+        this.webSocket.onerror = (err) => {
+            // Got error
+            console.log('[WS] ERROR', err);
+            this.webSocket = null;
+            this.notifyListeners('disconnected', { reason: 'unknown', error: 'unknown' } );
+        };
+
+        this.webSocket.onclose = (closed) => {
+            console.log('[WS] Closed: ' + (closed ? closed.code : 'NoCode') + ' ' + (closed ? closed.reason : 'NoReason'));
+            this.webSocket = null;
+            this.notifyListeners('disconnected', { reason: 'disconnected', error: 'disconnected' } );
+        };
+    }
+
+    async disconnect(): Promise<{ disconnected: boolean }> {
+        if (this.webSocket) {
+            this.webSocket.close();
+            this.webSocket = null;
+        }
+        return { disconnected: true };
+    }
+
+    async send(options: { message: string }): Promise<{ sent: boolean }> {
+        console.log('[WS] Send', options.message);
+
+        if (this.webSocket) {
+            this.webSocket.send(options.message);
+            return { sent: true };
+        }
+
+        return { sent: false };
+    }
+}
 //
-// import type { NativeWebsocketPlugin } from './definitions';
 //
-// export class NativeWebsocketWeb
-//   extends WebPlugin
-//   implements NativeWebsocketPlugin {
-//   async echo(options: { value: string }): Promise<{ value: string }> {
-//     console.log('ECHO', options);
-//     return options;
-//   }
+// export interface NativeWebsocketPlugin {
+//     connect(options: { url: string }): Promise<void>;
+//     send(options: { message: string }): Promise<{ sent: boolean }>;
+//     disconnect(): Promise<{ disconnected: boolean }>;
+//
+//     addListener(
+//         eventName: 'connected',
+//         listenerFunc: ConnectedChangeListener,
+//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
+//
+//     addListener(
+//         eventName: 'disconnected',
+//         listenerFunc: DisconnectedChangeListener,
+//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
+//
+//     addListener(
+//         eventName: 'message',
+//         listenerFunc: MessageListener,
+//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
+//
 // }

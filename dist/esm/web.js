@@ -1,14 +1,5 @@
-'use strict';
-
-Object.defineProperty(exports, '__esModule', { value: true });
-
-var core = require('@capacitor/core');
-
-const NativeWebsocket = core.registerPlugin('NativeWebsocket', {
-    web: () => Promise.resolve().then(function () { return web; }).then(m => new m.NativeWebsocketWeb()),
-});
-
-class NativeWebsocketWeb extends core.WebPlugin {
+import { WebPlugin } from '@capacitor/core';
+export class NativeWebsocketWeb extends WebPlugin {
     constructor() {
         super(...arguments);
         this.webSocket = null;
@@ -82,11 +73,4 @@ class NativeWebsocketWeb extends core.WebPlugin {
 //     ): Promise<PluginListenerHandle> & PluginListenerHandle;
 //
 // }
-
-var web = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    NativeWebsocketWeb: NativeWebsocketWeb
-});
-
-exports.NativeWebsocket = NativeWebsocket;
-//# sourceMappingURL=plugin.cjs.js.map
+//# sourceMappingURL=web.js.map
