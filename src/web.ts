@@ -14,13 +14,13 @@ export class NativeWebsocketWeb
 
         this.webSocket.onopen = () => {
             // Connected!
-            console.log('[WS] Connected');
+            console.log('[NWS] Connected');
             this.notifyListeners('connected', { connected: true } );
         };
 
         this.webSocket.onmessage = async (msg) => {
             // Got message
-            console.log('[WS] Message received', msg);
+            console.log('[NWS] Message received', msg);
             if (msg.data instanceof ArrayBuffer) {
                 this.notifyListeners('message', { data: msg.data, binary: true });
             } else {
@@ -30,13 +30,13 @@ export class NativeWebsocketWeb
 
         this.webSocket.onerror = (err) => {
             // Got error
-            console.log('[WS] ERROR', err);
+            console.log('[NWS] ERROR', err);
             this.webSocket = null;
             this.notifyListeners('disconnected', { reason: 'unknown', error: 'unknown' } );
         };
 
         this.webSocket.onclose = (closed) => {
-            console.log('[WS] Closed: ' + (closed ? closed.code : 'NoCode') + ' ' + (closed ? closed.reason : 'NoReason'));
+            console.log('[NWS] Closed: ' + (closed ? closed.code : 'NoCode') + ' ' + (closed ? closed.reason : 'NoReason'));
             this.webSocket = null;
             this.notifyListeners('disconnected', { reason: 'disconnected', error: 'disconnected' } );
         };
@@ -51,7 +51,7 @@ export class NativeWebsocketWeb
     }
 
     async send(options: { message: string }): Promise<{ sent: boolean }> {
-        console.log('[WS] Send', options.message);
+        console.log('[NWS] Send', options.message);
 
         if (this.webSocket) {
             this.webSocket.send(options.message);
@@ -61,26 +61,3 @@ export class NativeWebsocketWeb
         return { sent: false };
     }
 }
-//
-//
-// export interface NativeWebsocketPlugin {
-//     connect(options: { url: string }): Promise<void>;
-//     send(options: { message: string }): Promise<{ sent: boolean }>;
-//     disconnect(): Promise<{ disconnected: boolean }>;
-//
-//     addListener(
-//         eventName: 'connected',
-//         listenerFunc: ConnectedChangeListener,
-//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
-//
-//     addListener(
-//         eventName: 'disconnected',
-//         listenerFunc: DisconnectedChangeListener,
-//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
-//
-//     addListener(
-//         eventName: 'message',
-//         listenerFunc: MessageListener,
-//     ): Promise<PluginListenerHandle> & PluginListenerHandle;
-//
-// }
