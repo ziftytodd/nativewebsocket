@@ -76,13 +76,18 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
         print("NWS: Starting connect")
 
         if (isConnected) {
-            if let sock = socket {
-                sock.disconnect()
-                isConnected = false
-                socket?.delegate = nil
-                socket = nil
-            }
+            call.resolve()
+            return
         }
+
+//         if (isConnected) {
+//             if let sock = socket {
+//                 sock.disconnect()
+//                 isConnected = false
+//                 socket?.delegate = nil
+//                 socket = nil
+//             }
+//         }
 
         print("NWS: Connecting to URL \(call.getString("url"))")
         var request = URLRequest(url: URL(string: call.getString("url")!)!)
@@ -102,22 +107,22 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 sock.write(string: call.getString("message")!)
                 call.resolve([ "sent": true ])
             } else {
-                forceDisconnect()
+                forceDisconnect(reason: "Websocket not connected")
                 call.reject("Websocket not connected")
             }
         } else {
-            forceDisconnect()
+            forceDisconnect(reason: "Websocket not connected")
             call.reject("Websocket not connected")
         }
     }
 
     @objc func disconnect(_ call: CAPPluginCall) {
         print("NWS: Starting disconnect")
-        forceDisconnect()
+        forceDisconnect(reason: "Called Disconnect")
         call.resolve([ "disconnected": true ])
     }
 
-    func forceDisconnect() {
+    func forceDisconnect(reason: String) {
         print("NWS: Forcing disconnect")
         if (isConnected) {
             if let sock = socket {
@@ -131,7 +136,7 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
 
         self.notifyListeners("disconnected", data: [
             "disconnected": true,
-            "reason": "Called disconnect",
+            "reason": reason,
             "code": -1
         ])
     }

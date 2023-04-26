@@ -11,13 +11,17 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Base64;
+import java.util.concurrent.locks.ReentrantLock;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
 @CapacitorPlugin(name = "NativeWebsocket")
 public class NativeWebsocketPlugin extends Plugin {
-    private boolean isConnected;
+    private boolean isConnected = false;
+    private boolean connecting = false;
+    private long connectTimeoutAt = 0;
+    private ReentrantLock CONNECT_LOCK = new ReentrantLock();
     private WebSocketClient ws;
 
     private static String toBase64String(ByteBuffer buff) {
@@ -30,61 +34,82 @@ public class NativeWebsocketPlugin extends Plugin {
 
     @PluginMethod
     public void connect(PluginCall call) {
-        if (isConnected) {
-            try {
-                if (ws != null) ws.close();
-            } catch (Exception ignored) {}
-            isConnected = false;
-            ws = null;
-        }
-
-        String url = call.getString("url");
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Origin", "capacitor://localhost");
-
+        CONNECT_LOCK.lock();
         try {
-            ws = new WebSocketClient(new URI(url), headers) {
-                @Override
-                public void onMessage(String message) {
-                    JSObject ret = new JSObject();
-                    ret.put("data", message);
-                    ret.put("binary", false);
-                    notifyListeners("message", ret);
-                }
+            // Ignore attempt to connect if already connected
+            if (isConnected) {
+                call.resolve(new JSObject());
+                return;
+            }
 
-                @Override
-                public void onMessage(ByteBuffer bytes) {
-                    JSObject ret = new JSObject();
-                    ret.put("data", NativeWebsocketPlugin.toBase64String(bytes));
-                    ret.put("binary", true);
-                    notifyListeners("message", ret);
-                }
+            // We are already trying to connect and haven't timed out yet
+            if (connecting && (connectTimeoutAt < System.currentTimeMillis())) {
+                call.resolve(new JSObject());
+                return;
+            }
 
-                @Override
-                public void onOpen(ServerHandshake handshake) {
-                    isConnected = true;
+            //        if (isConnected) {
+            //            try {
+            //                if (ws != null) ws.close();
+            //            } catch (Exception ignored) {}
+            //            isConnected = false;
+            //            ws = null;
+            //        }
 
-                    JSObject ret = new JSObject();
-                    ret.put("connected", true);
-                    notifyListeners("connected", ret);
-                }
+            String url = call.getString("url");
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Origin", "capacitor://localhost");
+            connecting = true;
+            connectTimeoutAt = System.currentTimeMillis() + 30000;
 
-                @Override
-                public void onClose(int code, String reason, boolean remote) {
-                    handleDisconnect(reason, code, null);
-                }
+            try {
+                ws = new WebSocketClient(new URI(url), headers) {
+                    @Override
+                    public void onMessage(String message) {
+                        JSObject ret = new JSObject();
+                        ret.put("data", message);
+                        ret.put("binary", false);
+                        notifyListeners("message", ret);
+                    }
 
-                @Override
-                public void onError(Exception ex) {
-                    handleDisconnect("error", 0, ex.getMessage());
-                }
-            };
+                    @Override
+                    public void onMessage(ByteBuffer bytes) {
+                        JSObject ret = new JSObject();
+                        ret.put("data", NativeWebsocketPlugin.toBase64String(bytes));
+                        ret.put("binary", true);
+                        notifyListeners("message", ret);
+                    }
 
-            ws.connect();
+                    @Override
+                    public void onOpen(ServerHandshake handshake) {
+                        isConnected = true;
+                        connecting = false;
+                        connectTimeoutAt = 0;
 
-            call.resolve(new JSObject());
-        } catch (Exception e) {
-            call.reject("Exception occurred: " + e.getMessage());
+                        JSObject ret = new JSObject();
+                        ret.put("connected", true);
+                        notifyListeners("connected", ret);
+                    }
+
+                    @Override
+                    public void onClose(int code, String reason, boolean remote) {
+                        handleDisconnect(reason, code, null);
+                    }
+
+                    @Override
+                    public void onError(Exception ex) {
+                        handleDisconnect("error", 0, ex.getMessage());
+                    }
+                };
+
+                ws.connect();
+
+                call.resolve(new JSObject());
+            } catch (Exception e) {
+                call.reject("Exception occurred: " + e.getMessage());
+            }
+        } finally {
+            CONNECT_LOCK.unlock();
         }
     }
 
@@ -104,6 +129,8 @@ public class NativeWebsocketPlugin extends Plugin {
             notifyListeners("disconnected", ret);
         }
 
+        connecting = false;
+        connectTimeoutAt = 0;
         isConnected = false;
         ws = null;
     }
@@ -117,22 +144,22 @@ public class NativeWebsocketPlugin extends Plugin {
                 ret.put("sent", true);
                 call.resolve(ret);
             } catch (Exception e) {
-                forceDisconnect();
+                forceDisconnect("Exception occurred: " + e.getMessage());
                 call.reject("Exception occurred: " + e.getMessage());
             }
         } else {
-            forceDisconnect();
+            forceDisconnect("Websocket not connected");
             call.reject("Websocket not connected");
         }
     }
 
     @PluginMethod
     public void disconnect(PluginCall call) {
-        forceDisconnect();
+        forceDisconnect("Called disconnect");
         call.resolve(new JSObject());
     }
 
-    private void forceDisconnect() {
+    private void forceDisconnect(String reason) {
         if (isConnected || (ws != null)) {
             if (ws != null) {
                 try {
@@ -141,12 +168,14 @@ public class NativeWebsocketPlugin extends Plugin {
             }
         }
 
+        connecting = false;
+        connectTimeoutAt = 0;
         isConnected = false;
         ws = null;
 
         JSObject ret = new JSObject();
         ret.put("disconnected", true);
-        ret.put("reason", "Called disconnect");
+        ret.put("reason", reason);
         ret.put("code", -1);
         notifyListeners("disconnected", ret);
     }
