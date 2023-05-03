@@ -38,13 +38,13 @@ public class NativeWebsocketPlugin extends Plugin {
         try {
             // Ignore attempt to connect if already connected
             if (isConnected) {
-                call.resolve(new JSObject());
+                call.resolve(new JSObject().put("result", "Already Connected"));
                 return;
             }
 
             // We are already trying to connect and haven't timed out yet
-            if (connecting && (connectTimeoutAt < System.currentTimeMillis())) {
-                call.resolve(new JSObject());
+            if (connecting && (connectTimeoutAt > System.currentTimeMillis())) {
+                call.resolve(new JSObject().put("result", "Already trying to connect"));
                 return;
             }
 
@@ -104,7 +104,7 @@ public class NativeWebsocketPlugin extends Plugin {
 
                 ws.connect();
 
-                call.resolve(new JSObject());
+                call.resolve(new JSObject().put("result", "Connection Starting"));
             } catch (Exception e) {
                 call.reject("Exception occurred: " + e.getMessage());
             }

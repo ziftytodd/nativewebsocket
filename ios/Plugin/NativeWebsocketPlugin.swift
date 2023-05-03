@@ -10,11 +10,16 @@ import Starscream
 public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
     var socket: WebSocket?
     var isConnected: Bool = false
-
+    let connectQueue = DispatchQueue(label: "Connect Queue")
+    var connecting: Bool = false
+    var connectTimeoutAt: Int = 0
+    
     public func didReceive(event: WebSocketEvent, client: WebSocketClient) {
         switch event {
         case .connected(let headers):
             isConnected = true
+            connecting = false
+            connectTimeoutAt = 0
             self.notifyListeners("connected", data: [ "connected": true ])
             print("NWS: websocket is connected: \(headers)")
             break
@@ -63,42 +68,56 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 "disconnected": true,
                 "reason": reason,
                 "code": code,
-                "error": error
+                "error": error ?? "Error"
             ])
             sock.delegate = nil
             sock.disconnect()
         }
         socket = nil
         isConnected = false
+        connecting = false
+        connectTimeoutAt = 0
     }
 
     @objc func connect(_ call: CAPPluginCall) {
-        print("NWS: Starting connect")
+        connectQueue.async {
+            print("NWS: Starting connect")
+            
+            if (self.isConnected) {
+                print("NWS: Already connected")
+                call.resolve([ "result": "Already Connected" ])
+                return
+            }
+            
+            //         if (isConnected) {
+            //             if let sock = socket {
+            //                 sock.disconnect()
+            //                 isConnected = false
+            //                 socket?.delegate = nil
+            //                 socket = nil
+            //             }
+            //         }
 
-        if (isConnected) {
-            call.resolve()
-            return
+            if (self.connecting && (self.connectTimeoutAt > Int( (Date().timeIntervalSince1970 * 1000)))) {
+                print("NWS: Already trying to connect")
+                call.resolve([ "result": "Already trying to connect" ])
+                return
+            }
+            
+            self.connecting = true
+            self.connectTimeoutAt = Int( (Date().timeIntervalSince1970 * 1000) + 30000 )
+
+            print("NWS: Connecting to URL \(call.getString("url"))")
+            var request = URLRequest(url: URL(string: call.getString("url")!)!)
+            request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
+            request.timeoutInterval = 10
+            self.socket = WebSocket(request: request)
+            self.socket!.delegate = self
+            self.socket!.connect()
+            print("NWS: Connect started")
+            
+            call.resolve([ "result": "Connection Starting" ])
         }
-
-//         if (isConnected) {
-//             if let sock = socket {
-//                 sock.disconnect()
-//                 isConnected = false
-//                 socket?.delegate = nil
-//                 socket = nil
-//             }
-//         }
-
-        print("NWS: Connecting to URL \(call.getString("url"))")
-        var request = URLRequest(url: URL(string: call.getString("url")!)!)
-        request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
-        request.timeoutInterval = 10
-        socket = WebSocket(request: request)
-        socket!.delegate = self
-        socket!.connect()
-        print("NWS: Connect started")
-
-        call.resolve()
     }
 
     @objc func send(_ call: CAPPluginCall) {
@@ -133,6 +152,9 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
             socket = nil
             isConnected = false
         }
+
+        connecting = false
+        connectTimeoutAt = 0
 
         self.notifyListeners("disconnected", data: [
             "disconnected": true,
