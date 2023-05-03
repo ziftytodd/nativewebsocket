@@ -42,6 +42,7 @@ var capacitorNativeWebsocket = (function (exports, core) {
                 const ret = { reason: 'PWA Close', error: 'PWA Close' };
                 this.notifyListeners('disconnected', ret);
             };
+            return { result: "Connection Starting" };
         }
         async disconnect() {
             if (this.webSocket) {

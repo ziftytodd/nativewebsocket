@@ -9,7 +9,7 @@ export class NativeWebsocketWeb
 
     private webSocket: WebSocket | null = null;
 
-    async connect(options: { url: string }): Promise<void> {
+    async connect(options: { url: string }): Promise<{ result: string }> {
         this.webSocket = new WebSocket(options.url);
         this.webSocket.binaryType = 'arraybuffer';
 
@@ -45,6 +45,8 @@ export class NativeWebsocketWeb
             const ret: DisconnectedState = { reason: 'PWA Close', error: 'PWA Close' };
             this.notifyListeners('disconnected', ret);
         };
+
+        return { result: "Connection Starting" };
     }
 
     async disconnect(): Promise<{ disconnected: boolean }> {

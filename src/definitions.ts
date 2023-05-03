@@ -20,7 +20,7 @@ export type DisconnectedChangeListener = (state: DisconnectedState) => void;
 export type MessageListener = (event: MessageEvent) => void;
 
 export interface NativeWebsocketPlugin {
-  connect(options: { url: string }): Promise<void>;
+  connect(options: { url: string }): Promise<{ result: string }>;
   send(options: { message: string }): Promise<{ sent: boolean }>;
   disconnect(): Promise<{ disconnected: boolean }>;
 

@@ -4,7 +4,9 @@ export declare class NativeWebsocketWeb extends WebPlugin implements NativeWebso
     private webSocket;
     connect(options: {
         url: string;
-    }): Promise<void>;
+    }): Promise<{
+        result: string;
+    }>;
     disconnect(): Promise<{
         disconnected: boolean;
     }>;

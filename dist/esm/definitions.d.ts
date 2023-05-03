@@ -17,7 +17,9 @@ export declare type MessageListener = (event: MessageEvent) => void;
 export interface NativeWebsocketPlugin {
     connect(options: {
         url: string;
-    }): Promise<void>;
+    }): Promise<{
+        result: string;
+    }>;
     send(options: {
         message: string;
     }): Promise<{

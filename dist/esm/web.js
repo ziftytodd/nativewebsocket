@@ -36,6 +36,7 @@ export class NativeWebsocketWeb extends WebPlugin {
             const ret = { reason: 'PWA Close', error: 'PWA Close' };
             this.notifyListeners('disconnected', ret);
         };
+        return { result: "Connection Starting" };
     }
     async disconnect() {
         if (this.webSocket) {
