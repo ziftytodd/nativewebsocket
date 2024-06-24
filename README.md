@@ -70,7 +70,7 @@ disconnect() => any
 ### addListener(...)
 
 ```typescript
-addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Promise<PluginListenerHandle> & PluginListenerHandle
+addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener) => any
 ```
 
 | Param              | Type                                            |
@@ -86,7 +86,7 @@ addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Pr
 ### addListener(...)
 
 ```typescript
-addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => Promise<PluginListenerHandle> & PluginListenerHandle
+addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => any
 ```
 
 | Param              | Type                                               |
@@ -102,7 +102,7 @@ addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener)
 ### addListener(...)
 
 ```typescript
-addListener(eventName: 'message', listenerFunc: MessageListener) => Promise<PluginListenerHandle> & PluginListenerHandle
+addListener(eventName: 'message', listenerFunc: MessageListener) => any
 ```
 
 | Param              | Type                                          |

@@ -27,16 +27,16 @@ export interface NativeWebsocketPlugin {
   addListener(
       eventName: 'connected',
       listenerFunc: ConnectedChangeListener,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   addListener(
       eventName: 'disconnected',
       listenerFunc: DisconnectedChangeListener,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   addListener(
       eventName: 'message',
       listenerFunc: MessageListener,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
 }

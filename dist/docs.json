@@ -49,7 +49,7 @@
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Promise<PluginListenerHandle> & PluginListenerHandle",
+        "signature": "(eventName: 'connected', listenerFunc: ConnectedChangeListener) => any",
         "parameters": [
           {
             "name": "eventName",
@@ -73,7 +73,7 @@
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => Promise<PluginListenerHandle> & PluginListenerHandle",
+        "signature": "(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => any",
         "parameters": [
           {
             "name": "eventName",
@@ -97,7 +97,7 @@
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'message', listenerFunc: MessageListener) => Promise<PluginListenerHandle> & PluginListenerHandle",
+        "signature": "(eventName: 'message', listenerFunc: MessageListener) => any",
         "parameters": [
           {
             "name": "eventName",
