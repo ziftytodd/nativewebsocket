@@ -10,7 +10,8 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.Base64;
+// import java.util.Base64;
+import android.util.Base64;
 import java.util.concurrent.locks.ReentrantLock;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.drafts.Draft_6455;
@@ -29,7 +30,8 @@ public class NativeWebsocketPlugin extends Plugin {
         bb.position(0);
         byte[] b = new byte[bb.limit()];
         bb.get(b, 0, b.length);
-        return Base64.getEncoder().encodeToString(b);
+        return Base64.encodeToString(b, Base64.NO_WRAP);
+        // return Base64.getEncoder().encodeToString(b);
     }
 
     @PluginMethod
