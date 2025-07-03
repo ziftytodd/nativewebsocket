@@ -7,7 +7,7 @@
     "methods": [
       {
         "name": "connect",
-        "signature": "(options: { url: string; }) => any",
+        "signature": "(options: { url: string; }) => Promise<{ result: string; }>",
         "parameters": [
           {
             "name": "options",
@@ -15,7 +15,7 @@
             "type": "{ url: string; }"
           }
         ],
-        "returns": "any",
+        "returns": "Promise<{ result: string; }>",
         "tags": [],
         "docs": "",
         "complexTypes": [],
@@ -23,7 +23,7 @@
       },
       {
         "name": "send",
-        "signature": "(options: { message: string; }) => any",
+        "signature": "(options: { message: string; }) => Promise<{ sent: boolean; }>",
         "parameters": [
           {
             "name": "options",
@@ -31,7 +31,7 @@
             "type": "{ message: string; }"
           }
         ],
-        "returns": "any",
+        "returns": "Promise<{ sent: boolean; }>",
         "tags": [],
         "docs": "",
         "complexTypes": [],
@@ -39,9 +39,9 @@
       },
       {
         "name": "disconnect",
-        "signature": "() => any",
+        "signature": "() => Promise<{ disconnected: boolean; }>",
         "parameters": [],
-        "returns": "any",
+        "returns": "Promise<{ disconnected: boolean; }>",
         "tags": [],
         "docs": "",
         "complexTypes": [],
@@ -49,75 +49,75 @@
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'connected', listenerFunc: ConnectedChangeListener) => any",
+        "signature": "(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Promise<PluginListenerHandle>",
         "parameters": [
           {
             "name": "eventName",
             "docs": "",
-            "type": "\"connected\""
+            "type": "'connected'"
           },
           {
             "name": "listenerFunc",
             "docs": "",
-            "type": "(state: ConnectedState) => void"
+            "type": "ConnectedChangeListener"
           }
         ],
-        "returns": "any",
+        "returns": "Promise<PluginListenerHandle>",
         "tags": [],
         "docs": "",
         "complexTypes": [
-          "ConnectedChangeListener",
-          "PluginListenerHandle"
+          "PluginListenerHandle",
+          "ConnectedChangeListener"
         ],
-        "slug": "addlistener"
+        "slug": "addlistenerconnected-"
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => any",
+        "signature": "(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => Promise<PluginListenerHandle>",
         "parameters": [
           {
             "name": "eventName",
             "docs": "",
-            "type": "\"disconnected\""
+            "type": "'disconnected'"
           },
           {
             "name": "listenerFunc",
             "docs": "",
-            "type": "(state: DisconnectedState) => void"
+            "type": "DisconnectedChangeListener"
           }
         ],
-        "returns": "any",
+        "returns": "Promise<PluginListenerHandle>",
         "tags": [],
         "docs": "",
         "complexTypes": [
-          "DisconnectedChangeListener",
-          "PluginListenerHandle"
+          "PluginListenerHandle",
+          "DisconnectedChangeListener"
         ],
-        "slug": "addlistener"
+        "slug": "addlistenerdisconnected-"
       },
       {
         "name": "addListener",
-        "signature": "(eventName: 'message', listenerFunc: MessageListener) => any",
+        "signature": "(eventName: 'message', listenerFunc: MessageListener) => Promise<PluginListenerHandle>",
         "parameters": [
           {
             "name": "eventName",
             "docs": "",
-            "type": "\"message\""
+            "type": "'message'"
           },
           {
             "name": "listenerFunc",
             "docs": "",
-            "type": "(event: MessageEvent) => void"
+            "type": "MessageListener"
           }
         ],
-        "returns": "any",
+        "returns": "Promise<PluginListenerHandle>",
         "tags": [],
         "docs": "",
         "complexTypes": [
-          "MessageListener",
-          "PluginListenerHandle"
+          "PluginListenerHandle",
+          "MessageListener"
         ],
-        "slug": "addlistener"
+        "slug": "addlistenermessage-"
       }
     ],
     "properties": []
@@ -135,10 +135,121 @@
           "tags": [],
           "docs": "",
           "complexTypes": [],
-          "type": "() => any"
+          "type": "() => Promise<void>"
+        }
+      ]
+    },
+    {
+      "name": "ConnectedState",
+      "slug": "connectedstate",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "connected",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "DisconnectedState",
+      "slug": "disconnectedstate",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "reason",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "string | undefined"
+        },
+        {
+          "name": "code",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "string | undefined"
+        },
+        {
+          "name": "error",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "string | undefined"
+        }
+      ]
+    },
+    {
+      "name": "MessageEvent",
+      "slug": "messageevent",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "data",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "string"
+        },
+        {
+          "name": "binary",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "boolean"
         }
       ]
     }
   ],
-  "enums": []
+  "enums": [],
+  "typeAliases": [
+    {
+      "name": "ConnectedChangeListener",
+      "slug": "connectedchangelistener",
+      "docs": "",
+      "types": [
+        {
+          "text": "(state: ConnectedState): void",
+          "complexTypes": [
+            "ConnectedState"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "DisconnectedChangeListener",
+      "slug": "disconnectedchangelistener",
+      "docs": "",
+      "types": [
+        {
+          "text": "(state: DisconnectedState): void",
+          "complexTypes": [
+            "DisconnectedState"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MessageListener",
+      "slug": "messagelistener",
+      "docs": "",
+      "types": [
+        {
+          "text": "(event: MessageEvent): void",
+          "complexTypes": [
+            "MessageEvent"
+          ]
+        }
+      ]
+    }
+  ],
+  "pluginConfigs": []
 }

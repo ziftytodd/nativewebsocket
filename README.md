@@ -16,10 +16,11 @@ npx cap sync
 * [`connect(...)`](#connect)
 * [`send(...)`](#send)
 * [`disconnect()`](#disconnect)
-* [`addListener(...)`](#addlistener)
-* [`addListener(...)`](#addlistener)
-* [`addListener(...)`](#addlistener)
+* [`addListener('connected', ...)`](#addlistenerconnected-)
+* [`addListener('disconnected', ...)`](#addlistenerdisconnected-)
+* [`addListener('message', ...)`](#addlistenermessage-)
 * [Interfaces](#interfaces)
+* [Type Aliases](#type-aliases)
 
 </docgen-index>
 
@@ -29,14 +30,14 @@ npx cap sync
 ### connect(...)
 
 ```typescript
-connect(options: { url: string; }) => any
+connect(options: { url: string; }) => Promise<{ result: string; }>
 ```
 
 | Param         | Type                          |
 | ------------- | ----------------------------- |
 | **`options`** | <code>{ url: string; }</code> |
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;{ result: string; }&gt;</code>
 
 --------------------
 
@@ -44,14 +45,14 @@ connect(options: { url: string; }) => any
 ### send(...)
 
 ```typescript
-send(options: { message: string; }) => any
+send(options: { message: string; }) => Promise<{ sent: boolean; }>
 ```
 
 | Param         | Type                              |
 | ------------- | --------------------------------- |
 | **`options`** | <code>{ message: string; }</code> |
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;{ sent: boolean; }&gt;</code>
 
 --------------------
 
@@ -59,58 +60,58 @@ send(options: { message: string; }) => any
 ### disconnect()
 
 ```typescript
-disconnect() => any
+disconnect() => Promise<{ disconnected: boolean; }>
 ```
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;{ disconnected: boolean; }&gt;</code>
 
 --------------------
 
 
-### addListener(...)
+### addListener('connected', ...)
 
 ```typescript
-addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener) => any
+addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Promise<PluginListenerHandle>
 ```
 
-| Param              | Type                                            |
-| ------------------ | ----------------------------------------------- |
-| **`eventName`**    | <code>"connected"</code>                        |
-| **`listenerFunc`** | <code>(state: ConnectedState) =&gt; void</code> |
+| Param              | Type                                                                        |
+| ------------------ | --------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'connected'</code>                                                    |
+| **`listenerFunc`** | <code><a href="#connectedchangelistener">ConnectedChangeListener</a></code> |
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 
 --------------------
 
 
-### addListener(...)
+### addListener('disconnected', ...)
 
 ```typescript
-addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => any
+addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener) => Promise<PluginListenerHandle>
 ```
 
-| Param              | Type                                               |
-| ------------------ | -------------------------------------------------- |
-| **`eventName`**    | <code>"disconnected"</code>                        |
-| **`listenerFunc`** | <code>(state: DisconnectedState) =&gt; void</code> |
+| Param              | Type                                                                              |
+| ------------------ | --------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'disconnected'</code>                                                       |
+| **`listenerFunc`** | <code><a href="#disconnectedchangelistener">DisconnectedChangeListener</a></code> |
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 
 --------------------
 
 
-### addListener(...)
+### addListener('message', ...)
 
 ```typescript
-addListener(eventName: 'message', listenerFunc: MessageListener) => any
+addListener(eventName: 'message', listenerFunc: MessageListener) => Promise<PluginListenerHandle>
 ```
 
-| Param              | Type                                          |
-| ------------------ | --------------------------------------------- |
-| **`eventName`**    | <code>"message"</code>                        |
-| **`listenerFunc`** | <code>(event: MessageEvent) =&gt; void</code> |
+| Param              | Type                                                        |
+| ------------------ | ----------------------------------------------------------- |
+| **`eventName`**    | <code>'message'</code>                                      |
+| **`listenerFunc`** | <code><a href="#messagelistener">MessageListener</a></code> |
 
-**Returns:** <code>any</code>
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 
 --------------------
 
@@ -120,8 +121,50 @@ addListener(eventName: 'message', listenerFunc: MessageListener) => any
 
 #### PluginListenerHandle
 
-| Prop         | Type                      |
-| ------------ | ------------------------- |
-| **`remove`** | <code>() =&gt; any</code> |
+| Prop         | Type                                      |
+| ------------ | ----------------------------------------- |
+| **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
+
+
+#### ConnectedState
+
+| Prop            | Type                 |
+| --------------- | -------------------- |
+| **`connected`** | <code>boolean</code> |
+
+
+#### DisconnectedState
+
+| Prop         | Type                |
+| ------------ | ------------------- |
+| **`reason`** | <code>string</code> |
+| **`code`**   | <code>string</code> |
+| **`error`**  | <code>string</code> |
+
+
+#### MessageEvent
+
+| Prop         | Type                 |
+| ------------ | -------------------- |
+| **`data`**   | <code>string</code>  |
+| **`binary`** | <code>boolean</code> |
+
+
+### Type Aliases
+
+
+#### ConnectedChangeListener
+
+<code>(state: <a href="#connectedstate">ConnectedState</a>): void</code>
+
+
+#### DisconnectedChangeListener
+
+<code>(state: <a href="#disconnectedstate">DisconnectedState</a>): void</code>
+
+
+#### MessageListener
+
+<code>(event: <a href="#messageevent">MessageEvent</a>): void</code>
 
 </docgen-api>
