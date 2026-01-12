@@ -7,14 +7,17 @@ import Starscream
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(NativeWebsocketPlugin)
-public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
-    var socket: WebSocket?
+class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
+    typealias WS = Starscream.WebSocket
+    typealias WSEvent = Starscream.WebSocketEvent
+
+    var socket: WS?
     var isConnected: Bool = false
     let connectQueue = DispatchQueue(label: "Connect Queue")
     var connecting: Bool = false
     var connectTimeoutAt: Int = 0
-    
-    public func didReceive(event: WebSocketEvent, client: WebSocketClient) {
+
+    func didReceive(event: WSEvent, client: Starscream.WebSocketClient) {
         switch event {
         case .connected(let headers):
             isConnected = true
@@ -82,13 +85,13 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
     @objc func connect(_ call: CAPPluginCall) {
         connectQueue.async {
             print("NWS: Starting connect")
-            
+
             if (self.isConnected) {
                 print("NWS: Already connected")
                 call.resolve([ "result": "Already Connected" ])
                 return
             }
-            
+
             //         if (isConnected) {
             //             if let sock = socket {
             //                 sock.disconnect()
@@ -103,7 +106,7 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
                 call.resolve([ "result": "Already trying to connect" ])
                 return
             }
-            
+
             self.connecting = true
             self.connectTimeoutAt = Int( (Date().timeIntervalSince1970 * 1000) + 30000 )
 
@@ -111,11 +114,11 @@ public class NativeWebsocketPlugin: CAPPlugin, WebSocketDelegate {
             var request = URLRequest(url: URL(string: call.getString("url")!)!)
             request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
             request.timeoutInterval = 10
-            self.socket = WebSocket(request: request)
+            self.socket = WS(request: request)
             self.socket!.delegate = self
             self.socket!.connect()
             print("NWS: Connect started")
-            
+
             call.resolve([ "result": "Connection Starting" ])
         }
     }
