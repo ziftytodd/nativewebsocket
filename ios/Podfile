@@ -5,7 +5,7 @@ def capacitor_pods
   use_frameworks!
   pod 'Capacitor', :path => '../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../node_modules/@capacitor/ios'
-  pod 'Starscream', :git => 'https://github.com/ziftytodd/Starscream.git'
+  pod 'Starscream', :git => 'https://github.com/ziftytodd/Starscream.git', :commit => '82be42f757c1e442bbc978fd473e27148ed9b0b1'
 end
 
 target 'Plugin' do

@@ -60,15 +60,20 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             break
         case .error(let error):
             print("NWS: ERROR on socket error=\(error)")
-            handleDisconnect(reason: "disconnected", code: 0, error: "\(error)")
+            let errorMessage = error.map { "\($0)" }
+            handleDisconnect(reason: "disconnected", code: 0, error: errorMessage)
 
             socket?.delegate = nil
             socket?.disconnect()
             socket = nil
             self.notifyListeners("disconnected", data: [
                 "reason": "error",
-                "error": "\(error)"
+                "error": errorMessage ?? "Error"
             ])
+            break
+        case .peerClosed(let error):
+            let errorMessage = error.map { "\($0)" }
+            handleDisconnect(reason: "peerClosed", code: 0, error: errorMessage)
             break
         default:
             handleDisconnect(reason: "disconnected", code: 0, error: nil)

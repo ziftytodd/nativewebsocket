@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        .package(url: "https://github.com/daltoniam/Starscream.git", from: "4.0.4")
+        .package(url: "https://github.com/ziftytodd/Starscream.git", revision: "82be42f757c1e442bbc978fd473e27148ed9b0b1")
     ],
     targets: [
         .target(
