@@ -2,6 +2,10 @@
 
 Provides native websocket client functionality for iOS and Android
 
+## Compatibility
+
+Version 1.0.0 and later require Capacitor 8.
+
 ## Install
 
 ```bash

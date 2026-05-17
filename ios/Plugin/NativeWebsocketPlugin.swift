@@ -7,9 +7,17 @@ import Starscream
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(NativeWebsocketPlugin)
-class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
-    typealias WS = Starscream.WebSocket
-    typealias WSEvent = Starscream.WebSocketEvent
+public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebSocketDelegate {
+    public typealias WS = Starscream.WebSocket
+    public typealias WSEvent = Starscream.WebSocketEvent
+
+    public let identifier = "NativeWebsocketPlugin"
+    public let jsName = "NativeWebsocket"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "connect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "send", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "disconnect", returnType: CAPPluginReturnPromise)
+    ]
 
     var socket: WS?
     var isConnected: Bool = false
@@ -17,7 +25,7 @@ class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
     var connecting: Bool = false
     var connectTimeoutAt: Int = 0
 
-    func didReceive(event: WSEvent, client: Starscream.WebSocketClient) {
+    public func didReceive(event: WSEvent, client: Starscream.WebSocketClient) {
         switch event {
         case .connected(let headers):
             isConnected = true
@@ -62,6 +70,9 @@ class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
                 "error": "\(error)"
             ])
             break
+        default:
+            handleDisconnect(reason: "disconnected", code: 0, error: nil)
+            break
         }
     }
 
@@ -82,7 +93,7 @@ class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
         connectTimeoutAt = 0
     }
 
-    @objc func connect(_ call: CAPPluginCall) {
+    @objc public func connect(_ call: CAPPluginCall) {
         connectQueue.async {
             print("NWS: Starting connect")
 
@@ -123,7 +134,7 @@ class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
         }
     }
 
-    @objc func send(_ call: CAPPluginCall) {
+    @objc public func send(_ call: CAPPluginCall) {
         if (isConnected) {
             if let sock = socket {
                 sock.write(string: call.getString("message")!)
@@ -138,7 +149,7 @@ class NativeWebsocketPlugin: CAPPlugin, Starscream.WebSocketDelegate {
         }
     }
 
-    @objc func disconnect(_ call: CAPPluginCall) {
+    @objc public func disconnect(_ call: CAPPluginCall) {
         print("NWS: Starting disconnect")
         forceDisconnect(reason: "Called Disconnect")
         call.resolve([ "disconnected": true ])

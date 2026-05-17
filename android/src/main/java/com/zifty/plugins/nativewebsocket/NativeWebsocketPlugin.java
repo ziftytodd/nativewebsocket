@@ -1,24 +1,25 @@
 package com.zifty.plugins.nativewebsocket;
 
+// import java.util.Base64;
+import android.util.Base64;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import org.java_websocket.client.WebSocketClient;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.HashMap;
-// import java.util.Base64;
-import android.util.Base64;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
+import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
 @CapacitorPlugin(name = "NativeWebsocket")
 public class NativeWebsocketPlugin extends Plugin {
+
     private boolean isConnected = false;
     private boolean connecting = false;
     private long connectTimeoutAt = 0;

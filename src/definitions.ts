@@ -24,19 +24,9 @@ export interface NativeWebsocketPlugin {
   send(options: { message: string }): Promise<{ sent: boolean }>;
   disconnect(): Promise<{ disconnected: boolean }>;
 
-  addListener(
-      eventName: 'connected',
-      listenerFunc: ConnectedChangeListener,
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener): Promise<PluginListenerHandle>;
 
-  addListener(
-      eventName: 'disconnected',
-      listenerFunc: DisconnectedChangeListener,
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'disconnected', listenerFunc: DisconnectedChangeListener): Promise<PluginListenerHandle>;
 
-  addListener(
-      eventName: 'message',
-      listenerFunc: MessageListener,
-  ): Promise<PluginListenerHandle>;
-
+  addListener(eventName: 'message', listenerFunc: MessageListener): Promise<PluginListenerHandle>;
 }
