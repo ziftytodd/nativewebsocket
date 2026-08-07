@@ -173,6 +173,14 @@ public class NativeWebsocketPlugin extends Plugin {
         }
 
         if (client == null) {
+            // Deliberate: this tears down an in-flight attempt as well, and tells JS it did.
+            //
+            // A caller only reaches here by sending while the plugin is not connected, which means
+            // its own view has diverged from the plugin's - the stale-connected case the audit
+            // opened with. The teardown plus the retained `disconnected` is the resync that corrects
+            // that, and contract item 2 requires internal force-disconnect paths to tear down
+            // regardless of connecting state. Callers that want to ask without consequences have
+            // isConnected().
             forceDisconnect("Websocket not connected");
             call.reject("Websocket not connected");
             return;
