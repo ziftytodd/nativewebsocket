@@ -30,10 +30,17 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
     private static let abnormalCloseCode = 1006
 
     /// Every elapsed-time decision reads this instead of the wall clock, which jumps on NTP
-    /// corrections and manual date changes. It is also the clock `DispatchSourceTimer` schedules
-    /// against, so the keepalive timer and its deadline cannot disagree.
+    /// corrections and manual date changes. It reads `DispatchTime` specifically, the clock
+    /// `DispatchSourceTimer` schedules against, so a tick and the deadline it enforces are
+    /// measured against one source by construction rather than by assumption.
+    ///
+    /// It counts awake time only: waking from a long sleep therefore does not by itself trip the
+    /// 90s deadline, because neither this clock nor the timer advanced while the device slept.
+    /// The socket is usually dead by then, and that surfaces the ordinary way - the next ping
+    /// fails, or the app resyncs on resume via `isConnected()` - rather than as a timeout for
+    /// time the plugin never actually spent waiting.
     private static var monotonicNow: TimeInterval {
-        return ProcessInfo.processInfo.systemUptime
+        return TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
     }
 
     let connectQueue = DispatchQueue(label: "Connect Queue")
@@ -94,7 +101,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
         case .cancelled:
             handleDisconnect(generation: generation, reason: "cancelled", code: 0)
         case .error(let error):
-            print("NWS: ERROR on socket error=\(String(describing: error))")
+            print("NWS: ERROR on socket error=\(Self.redacted(error))")
             handleDisconnect(generation: generation, reason: "disconnected", code: 0, error: error)
         case .peerClosed(let error):
             handleDisconnect(generation: generation, reason: "peerClosed", code: 0, error: error)
@@ -186,6 +193,18 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             settledGeneration = socketGeneration
         }
         socketGeneration = 0
+    }
+
+    /// An error's description renders its associated values, and `notAnUpgrade` carries the whole
+    /// response header dictionary, so the log gets the error's shape rather than its contents.
+    private static func redacted(_ error: Error?) -> String {
+        guard let error = error else {
+            return "none"
+        }
+        if let upgradeError = error as? HTTPUpgradeError, case .notAnUpgrade(let status, let headers) = upgradeError {
+            return "HTTPUpgradeError.notAnUpgrade httpStatus=\(status) with \(headers.count) header(s)"
+        }
+        return "\(type(of: error))"
     }
 
     /// Starscream reports a failed HTTP upgrade as `HTTPUpgradeError.notAnUpgrade(status, headers)`.
