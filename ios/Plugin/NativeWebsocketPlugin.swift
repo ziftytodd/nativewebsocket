@@ -21,13 +21,20 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
     ]
 
     /// How long a `connect()` may stay in flight before a later `connect()` is allowed to replace it.
-    private static let connectTimeoutMillis = 30000
+    private static let connectTimeout: TimeInterval = 30
     /// How often a ping is written while the socket is open.
     private static let pingInterval: TimeInterval = 30
     /// How long the socket may go without receiving any frame before it is considered dead.
     private static let frameDeadline: TimeInterval = 90
     /// RFC 6455 "abnormal closure", reported when the keepalive deadline expires.
     private static let abnormalCloseCode = 1006
+
+    /// Every elapsed-time decision reads this instead of the wall clock, which jumps on NTP
+    /// corrections and manual date changes. It is also the clock `DispatchSourceTimer` schedules
+    /// against, so the keepalive timer and its deadline cannot disagree.
+    private static var monotonicNow: TimeInterval {
+        return ProcessInfo.processInfo.systemUptime
+    }
 
     let connectQueue = DispatchQueue(label: "Connect Queue")
 
@@ -37,7 +44,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
     var socket: WS?
     var socketIsOpen: Bool = false
     var connecting: Bool = false
-    var connectTimeoutAt: Int = 0
+    var connectTimeoutAt: TimeInterval = 0
     /// Generation of `socket`, or 0 when there is no socket.
     private var socketGeneration: UInt64 = 0
     /// Monotonic counter; every socket we create is tagged with the next value.
@@ -60,15 +67,17 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
         }
 
         switch event {
+        // Frame payloads and handshake headers routinely carry auth tokens and session cookies,
+        // and the device log outlives the app, so only their shape is logged.
         case .connected(let headers):
-            print("NWS: websocket is connected: \(headers)")
+            print("NWS: websocket is connected with \(headers.count) header(s)")
             handleConnect(generation: generation)
         case .disconnected(let reason, let code):
             print("NWS: websocket is disconnected: \(reason) with code: \(code)")
             handleDisconnect(generation: generation, reason: reason, code: Int(code))
         case .text(let string):
             noteFrameReceived()
-            print("NWS: Received text: \(string)")
+            print("NWS: Received text: \(string.count) chars")
             emit("message", [ "data": string, "binary": false ])
         case .binary(let data):
             noteFrameReceived()
@@ -218,7 +227,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
     // MARK: - Keepalive
 
     private func noteFrameReceived() {
-        lastFrameAt = Date().timeIntervalSince1970
+        lastFrameAt = Self.monotonicNow
     }
 
     private func startKeepalive(generation: UInt64) {
@@ -244,7 +253,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             return
         }
 
-        if Date().timeIntervalSince1970 - lastFrameAt > Self.frameDeadline {
+        if Self.monotonicNow - lastFrameAt > Self.frameDeadline {
             print("NWS: No frame received for over \(Int(Self.frameDeadline))s, treating the socket as dead")
             handleDisconnect(generation: generation, reason: "keepalive-timeout", code: Self.abnormalCloseCode)
             return
@@ -270,7 +279,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
                 return
             }
 
-            let now = Int(Date().timeIntervalSince1970 * 1000)
+            let now = Self.monotonicNow
             if self.connecting && self.connectTimeoutAt > now {
                 print("NWS: Already trying to connect")
                 call.resolve([ "result": "Already trying to connect" ])
@@ -300,7 +309,7 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             self.socket = sock
             self.socketGeneration = generation
             self.connecting = true
-            self.connectTimeoutAt = now + Self.connectTimeoutMillis
+            self.connectTimeoutAt = now + Self.connectTimeout
             sock.connect()
             print("NWS: Connect started")
 
