@@ -284,7 +284,8 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
     // MARK: - Plugin methods
 
     @objc public func connect(_ call: CAPPluginCall) {
-        guard let urlString = call.getString("url"), let url = URL(string: urlString), url.scheme != nil, url.host != nil else {
+        guard let urlString = call.getString("url"), let url = URL(string: urlString),
+              let scheme = url.scheme, let host = url.host else {
             call.reject("A valid 'url' is required to connect")
             return
         }
@@ -317,7 +318,8 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             self.generationCounter += 1
             let generation = self.generationCounter
 
-            print("NWS: Connecting to URL \(urlString)")
+            // Scheme and host only: the path and query can carry an auth token.
+            print("NWS: Connecting to \(scheme)://\(host)")
             var request = URLRequest(url: url)
             request.addValue("capacitor://localhost", forHTTPHeaderField: "Origin")
             request.timeoutInterval = 10
