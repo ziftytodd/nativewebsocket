@@ -34,7 +34,7 @@ export class NativeWebsocketWeb extends WebPlugin {
             console.log('[NWS] Closed: ' + (closed ? closed.code : 'NoCode') + ' ' + (closed ? closed.reason : 'NoReason'));
             this.webSocket = null;
             const ret = {
-                reason: (closed ? closed.reason : '') || 'PWA Close',
+                reason: 'PWA Close',
                 code: closed ? closed.code : undefined,
                 error: 'PWA Close',
             };

@@ -182,7 +182,7 @@
         {
           "name": "code",
           "tags": [],
-          "docs": "WebSocket close code. -1 when the plugin itself tore the socket down, and\n0 when the socket failed without the native layer learning a close code.",
+          "docs": "WebSocket close code. -1 when the plugin itself tore the socket down, and\n0 for a terminal event that carries no close code at all - on iOS the\ncancelled, error and peerClosed cases.",
           "complexTypes": [],
           "type": "number | undefined"
         },

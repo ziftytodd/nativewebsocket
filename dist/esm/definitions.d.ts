@@ -6,7 +6,8 @@ export interface DisconnectedState {
     reason?: string;
     /**
      * WebSocket close code. -1 when the plugin itself tore the socket down, and
-     * 0 when the socket failed without the native layer learning a close code.
+     * 0 for a terminal event that carries no close code at all - on iOS the
+     * cancelled, error and peerClosed cases.
      */
     code?: number;
     error?: string;
