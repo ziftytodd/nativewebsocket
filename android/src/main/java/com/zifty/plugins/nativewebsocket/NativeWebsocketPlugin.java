@@ -12,10 +12,13 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.exceptions.InvalidDataException;
+import org.java_websocket.framing.CloseFrame;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -25,8 +28,12 @@ public class NativeWebsocketPlugin extends Plugin {
     /** Explicit connection-lost timeout, in seconds, in place of the library default of 60. */
     private static final int CONNECTION_LOST_TIMEOUT_SECONDS = 30;
 
-    /** How long a connect attempt stays in flight before a fresh connect() may take over from it. */
-    private static final long CONNECT_TIMEOUT_MILLIS = 30000;
+    /**
+     * Bounds each blocking phase of a connect attempt: first the TCP connect, then the wait for the
+     * upgrade response. The library leaves both unbounded on its own. It is also how long an
+     * attempt stays in flight before a fresh connect() may take over from it.
+     */
+    private static final int CONNECT_TIMEOUT_MILLIS = 30000;
 
     private final ReentrantLock CONNECT_LOCK = new ReentrantLock();
 
@@ -34,15 +41,15 @@ public class NativeWebsocketPlugin extends Plugin {
      * Everything below is guarded by CONNECT_LOCK. Socket callbacks arrive on the client's own
      * threads, so no field here may be read or written outside it.
      *
-     * `ws` doubles as the socket generation: every connect() builds a fresh WebSocketClient, so a
-     * callback belongs to the current generation exactly when its client is identical to `ws`. A
-     * callback that fails that check is ignored and its client closed - it never touches the state
-     * below, which is what holds each generation to at most one `connected` and one `disconnected`.
+     * `ws` doubles as the socket generation: every connect() builds a fresh client, so a callback
+     * belongs to the current generation exactly when its client is identical to `ws`. A callback
+     * that fails that check is ignored and its client killed - it never touches the state below,
+     * which is what holds each generation to at most one `connected` and one `disconnected`.
      */
     private boolean connected = false;
     private boolean connecting = false;
     private long connectTimeoutAt = 0;
-    private WebSocketClient ws;
+    private TrackedClient ws;
     private Integer handshakeHttpStatus;
 
     private static String toBase64String(ByteBuffer buff) {
@@ -70,74 +77,42 @@ public class NativeWebsocketPlugin extends Plugin {
             return;
         }
 
-        // Both are closed after the lock is released: closing a live client takes the client's own
-        // monitor, which its callback threads hold while they wait for CONNECT_LOCK.
-        WebSocketClient replaced = null;
-        WebSocketClient aborted = null;
-
+        // Contract item 3 wants the expired attempt torn down before its replacement exists, so this
+        // runs as two locked sections with the teardown between them. Overlapping them would let
+        // both clients reach the server at once, and a backend that allows one session per driver
+        // would let the dying attempt displace the fresh one.
+        TrackedClient expired;
         CONNECT_LOCK.lock();
         try {
-            // Ignore attempt to connect if already connected
-            if (connected) {
-                call.resolve(new JSObject().put("result", "Already Connected"));
+            JSObject busy = busyResult();
+            if (busy != null) {
+                call.resolve(busy);
                 return;
             }
+            expired = takeCurrentClient();
+        } finally {
+            CONNECT_LOCK.unlock();
+        }
 
-            // We are already trying to connect and haven't timed out yet
-            if (connecting && (connectTimeoutAt > System.currentTimeMillis())) {
-                call.resolve(new JSObject().put("result", "Already trying to connect"));
+        // Superseding an expired, never-opened attempt is silent per contract item 3: JS initiated
+        // the replacement and was never told the old attempt opened.
+        killQuietly(expired);
+
+        TrackedClient aborted = null;
+        CONNECT_LOCK.lock();
+        try {
+            // Re-checked, because the lock was released for the teardown above.
+            JSObject busy = busyResult();
+            if (busy != null) {
+                call.resolve(busy);
                 return;
             }
-
-            // The in-flight guard on the previous attempt has expired. Take that client with us and
-            // close it below rather than abandoning it: an abandoned client keeps its connect thread
-            // and can still open its socket. It never reached "connected", so it owes JS no
-            // disconnected event.
-            replaced = takeCurrentClient();
 
             Map<String, String> headers = new HashMap<>();
             headers.put("Origin", "capacitor://localhost");
 
             try {
-                WebSocketClient client = new WebSocketClient(uri, headers) {
-                    @Override
-                    public void onMessage(String message) {
-                        JSObject ret = new JSObject();
-                        ret.put("data", message);
-                        ret.put("binary", false);
-                        emitFromClient(this, "message", ret);
-                    }
-
-                    @Override
-                    public void onMessage(ByteBuffer bytes) {
-                        JSObject ret = new JSObject();
-                        ret.put("data", NativeWebsocketPlugin.toBase64String(bytes));
-                        ret.put("binary", true);
-                        emitFromClient(this, "message", ret);
-                    }
-
-                    @Override
-                    public void onWebsocketHandshakeReceivedAsClient(WebSocket conn, ClientHandshake request, ServerHandshake response)
-                        throws InvalidDataException {
-                        super.onWebsocketHandshakeReceivedAsClient(conn, request, response);
-                        recordHandshakeStatus(this, response.getHttpStatus());
-                    }
-
-                    @Override
-                    public void onOpen(ServerHandshake handshake) {
-                        handleOpen(this);
-                    }
-
-                    @Override
-                    public void onClose(int code, String reason, boolean remote) {
-                        handleDisconnect(this, reason, code, null);
-                    }
-
-                    @Override
-                    public void onError(Exception ex) {
-                        handleDisconnect(this, "error", 0, ex.getMessage());
-                    }
-                };
+                TrackedClient client = new TrackedClient(uri, headers);
 
                 // Explicit, rather than inheriting the library default of 60 seconds. Safe to call
                 // on a client no other thread can reach yet.
@@ -158,8 +133,24 @@ public class NativeWebsocketPlugin extends Plugin {
             CONNECT_LOCK.unlock();
         }
 
-        closeQuietly(replaced);
-        closeQuietly(aborted);
+        killQuietly(aborted);
+    }
+
+    /**
+     * The connect() result for a call that must not start a new attempt, or null to go ahead.
+     * Shared by both locked sections of connect() so the two guards cannot drift apart. Caller
+     * holds CONNECT_LOCK.
+     */
+    private JSObject busyResult() {
+        if (connected) {
+            return new JSObject().put("result", "Already Connected");
+        }
+
+        if (connecting && (connectTimeoutAt > System.currentTimeMillis())) {
+            return new JSObject().put("result", "Already trying to connect");
+        }
+
+        return null;
     }
 
     @PluginMethod
@@ -170,7 +161,7 @@ public class NativeWebsocketPlugin extends Plugin {
             return;
         }
 
-        WebSocketClient client;
+        TrackedClient client;
         CONNECT_LOCK.lock();
         try {
             client = currentOpenClient();
@@ -190,8 +181,12 @@ public class NativeWebsocketPlugin extends Plugin {
             ret.put("sent", true);
             call.resolve(ret);
         } catch (Exception e) {
-            forceDisconnect("Exception occurred: " + e.getMessage());
-            call.reject("Exception occurred: " + e.getMessage());
+            String failure = "Exception occurred: " + e.getMessage();
+            // The socket can go down between the check above and this failure, in which case its own
+            // terminal callback has already told JS; a second event here would be two disconnects
+            // for one drop.
+            disconnectIfCurrent(client, failure);
+            call.reject(failure);
         }
     }
 
@@ -212,7 +207,7 @@ public class NativeWebsocketPlugin extends Plugin {
     }
 
     /** The current client if it is live and open, otherwise null. Caller holds CONNECT_LOCK. */
-    private WebSocketClient currentOpenClient() {
+    private TrackedClient currentOpenClient() {
         return (connected && ws != null && ws.isOpen()) ? ws : null;
     }
 
@@ -221,8 +216,8 @@ public class NativeWebsocketPlugin extends Plugin {
      * one. Emitting under the lock keeps a late `connected` from overtaking the `disconnected` of a
      * teardown that is already under way.
      */
-    private void emitFromClient(WebSocketClient client, String eventName, JSObject data) {
-        WebSocketClient stale = null;
+    private void emitFromClient(TrackedClient client, String eventName, JSObject data) {
+        TrackedClient stale = null;
 
         CONNECT_LOCK.lock();
         try {
@@ -235,17 +230,16 @@ public class NativeWebsocketPlugin extends Plugin {
             CONNECT_LOCK.unlock();
         }
 
-        closeQuietly(stale);
+        killQuietly(stale);
     }
 
-    private void handleOpen(WebSocketClient client) {
-        WebSocketClient stale = null;
+    private void handleOpen(TrackedClient client) {
+        TrackedClient stale = null;
 
         CONNECT_LOCK.lock();
         try {
             if (client != ws) {
-                // An abandoned attempt that opened anyway. close() bites now that it is open, which
-                // it did not while the client was still connecting.
+                // An abandoned attempt that opened anyway. close() bites now that it is open.
                 stale = client;
             } else {
                 connected = true;
@@ -261,11 +255,11 @@ public class NativeWebsocketPlugin extends Plugin {
             CONNECT_LOCK.unlock();
         }
 
-        closeQuietly(stale);
+        killQuietly(stale);
     }
 
-    private void handleDisconnect(WebSocketClient client, String reason, int code, String error) {
-        WebSocketClient finished;
+    private void handleDisconnect(TrackedClient client, String reason, int code, String error) {
+        TrackedClient finished;
 
         CONNECT_LOCK.lock();
         try {
@@ -275,10 +269,7 @@ public class NativeWebsocketPlugin extends Plugin {
                 // socket: the onError handler cleared `ws` before the close arrived.
                 finished = client;
             } else {
-                JSObject ret = new JSObject();
-                ret.put("disconnected", true);
-                if (reason != null) ret.put("reason", reason);
-                ret.put("code", code);
+                JSObject ret = disconnectPayload(reason, code);
                 if (error != null) ret.put("error", error);
 
                 Integer httpStatus = resolveHandshakeHttpStatus(reason, error);
@@ -291,7 +282,7 @@ public class NativeWebsocketPlugin extends Plugin {
             CONNECT_LOCK.unlock();
         }
 
-        closeQuietly(finished);
+        killQuietly(finished);
     }
 
     /**
@@ -300,25 +291,49 @@ public class NativeWebsocketPlugin extends Plugin {
      * the current client, so this stays the only disconnected event for it.
      */
     private void forceDisconnect(String reason) {
-        WebSocketClient discarded;
+        TrackedClient discarded;
 
         CONNECT_LOCK.lock();
         try {
             discarded = takeCurrentClient();
-
-            JSObject ret = new JSObject();
-            ret.put("disconnected", true);
-            ret.put("reason", reason);
-            ret.put("code", -1);
-            notifyListeners("disconnected", ret, true);
+            notifyListeners("disconnected", disconnectPayload(reason, -1), true);
         } finally {
             CONNECT_LOCK.unlock();
         }
 
-        closeQuietly(discarded);
+        killQuietly(discarded);
     }
 
-    private void recordHandshakeStatus(WebSocketClient client, short httpStatus) {
+    /**
+     * Tears down and reports a client only if it is still the current one. Used where the caller
+     * has been holding a client reference across an unlocked stretch and the socket may have gone
+     * down under it in the meantime, having already reported itself.
+     */
+    private void disconnectIfCurrent(TrackedClient client, String reason) {
+        TrackedClient discarded = null;
+
+        CONNECT_LOCK.lock();
+        try {
+            if (client == ws) {
+                discarded = takeCurrentClient();
+                notifyListeners("disconnected", disconnectPayload(reason, -1), true);
+            }
+        } finally {
+            CONNECT_LOCK.unlock();
+        }
+
+        killQuietly(discarded);
+    }
+
+    private static JSObject disconnectPayload(String reason, int code) {
+        JSObject ret = new JSObject();
+        ret.put("disconnected", true);
+        if (reason != null) ret.put("reason", reason);
+        ret.put("code", code);
+        return ret;
+    }
+
+    private void recordHandshakeStatus(TrackedClient client, short httpStatus) {
         CONNECT_LOCK.lock();
         try {
             if (client == ws) {
@@ -344,11 +359,11 @@ public class NativeWebsocketPlugin extends Plugin {
     }
 
     /**
-     * Clears every trace of the current connection and hands the client back so the caller can close
+     * Clears every trace of the current connection and hands the client back so the caller can kill
      * it once the lock is released. Emits nothing. Caller holds CONNECT_LOCK.
      */
-    private WebSocketClient takeCurrentClient() {
-        WebSocketClient previous = ws;
+    private TrackedClient takeCurrentClient() {
+        TrackedClient previous = ws;
         ws = null;
         connected = false;
         connecting = false;
@@ -357,36 +372,164 @@ public class NativeWebsocketPlugin extends Plugin {
         return previous;
     }
 
+    /** Ends a client, if there is one. Must be called with CONNECT_LOCK released. */
+    private static void killQuietly(TrackedClient client) {
+        if (client != null) {
+            client.kill();
+        }
+    }
+
     /**
-     * Closes a client for good. Must be called with CONNECT_LOCK released: closing takes the
-     * client's own monitor, which its callback threads hold while they block on CONNECT_LOCK.
+     * The plugin's websocket client, extended with the identity and shutdown machinery the library
+     * does not offer.
      *
-     * <p>{@code WebSocketClient.close()} is a no-op until the handshake has finished - it is gated
-     * on a write thread that only exists once the socket is open - so an in-flight client also needs
-     * its transport dropped, or its connect thread lives on and may still open the socket. Closing
-     * that socket lets the thread fail out on its own, where its callbacks are ignored as stale.
+     * <p>Java-WebSocket 1.5.2 gives an owner no way to cancel a connect attempt that has not yet
+     * sent its upgrade request. {@code close()} reaches the engine only once {@code run()} has sent
+     * the request and started the write thread, and until then the raw socket lives in a
+     * non-volatile field written by the connect thread, so another thread may not even see it.
      *
-     * <p>{@code closeConnection()} is deliberately not used: it delivers onClose synchronously on
-     * the calling thread, which would land straight back here.
+     * <p>Rather than race that field, the client polices itself: {@link #kill()} raises a flag that
+     * the connect thread checks at the last point before the request goes out, and aborts there.
+     * A superseded attempt may therefore still complete a TCP and TLS connection, but it can never
+     * send an upgrade request, so no server-side websocket session is ever opened for it.
      */
-    private static void closeQuietly(WebSocketClient client) {
-        if (client == null) {
-            return;
+    private final class TrackedClient extends WebSocketClient {
+
+        private final AtomicBoolean killed = new AtomicBoolean(false);
+
+        /**
+         * The raw socket, republished from the library's non-volatile field by the very thread that
+         * assigned it, so other threads can reliably force the transport down from here on.
+         */
+        private volatile Socket transport;
+
+        TrackedClient(URI uri, Map<String, String> headers) {
+            // The four-argument constructor is the only one that bounds the TCP connect; the shorter
+            // ones pass 0, which waits forever.
+            super(uri, new Draft_6455(), headers, CONNECT_TIMEOUT_MILLIS);
         }
 
-        boolean wasOpen = client.isOpen();
+        @Override
+        public void onWebsocketHandshakeSentAsClient(WebSocket conn, ClientHandshake request) throws InvalidDataException {
+            // Runs on the connect thread inside startHandshake(), after TCP and any TLS are up but
+            // before the upgrade request is written. This is the last moment a superseded attempt
+            // can be stopped without the server ever seeing a websocket session, so it is where the
+            // kill flag is enforced. Throwing here aborts run() before it writes anything or starts
+            // the write thread.
+            transport = getSocket();
 
-        try {
-            client.close();
-        } catch (Exception ignored) {}
+            if (killed.get()) {
+                closeTransport();
+                throw new InvalidDataException(CloseFrame.NEVER_CONNECTED, "Connection superseded");
+            }
 
-        if (wasOpen) {
-            return;
+            // The library then waits indefinitely for the upgrade response - the connection-lost
+            // timer only starts once the socket is open. Bound that wait here; onOpen clears it.
+            setReadTimeout(CONNECT_TIMEOUT_MILLIS);
+
+            super.onWebsocketHandshakeSentAsClient(conn, request);
         }
 
-        try {
-            Socket socket = client.getSocket();
-            if (socket != null) socket.close();
-        } catch (Exception ignored) {}
+        @Override
+        public void onWebsocketHandshakeReceivedAsClient(WebSocket conn, ClientHandshake request, ServerHandshake response)
+            throws InvalidDataException {
+            super.onWebsocketHandshakeReceivedAsClient(conn, request, response);
+            recordHandshakeStatus(this, response.getHttpStatus());
+        }
+
+        @Override
+        public void onOpen(ServerHandshake handshake) {
+            // The handshake is in; liveness is the connection-lost timer's job from here, and a read
+            // timeout would now fire on a healthy idle socket.
+            setReadTimeout(0);
+            handleOpen(this);
+        }
+
+        @Override
+        public void onMessage(String message) {
+            JSObject ret = new JSObject();
+            ret.put("data", message);
+            ret.put("binary", false);
+            emitFromClient(this, "message", ret);
+        }
+
+        @Override
+        public void onMessage(ByteBuffer bytes) {
+            JSObject ret = new JSObject();
+            ret.put("data", NativeWebsocketPlugin.toBase64String(bytes));
+            ret.put("binary", true);
+            emitFromClient(this, "message", ret);
+        }
+
+        @Override
+        public void onClose(int code, String reason, boolean remote) {
+            handleDisconnect(this, reason, code, null);
+        }
+
+        @Override
+        public void onError(Exception ex) {
+            handleDisconnect(this, "error", 0, ex.getMessage());
+        }
+
+        /**
+         * Ends this client for good, whatever stage it has reached. Idempotent, so it is safe to
+         * call from a callback of this same client.
+         *
+         * <p>Must be called with CONNECT_LOCK released: closing takes the client's own monitor,
+         * which its callback threads hold while they block on the lock.
+         */
+        void kill() {
+            if (killed.getAndSet(true)) {
+                return; // already ended, or being ended further up this same stack
+            }
+
+            boolean wasOpen = isOpen();
+
+            try {
+                close();
+            } catch (Exception ignored) {}
+
+            if (wasOpen) {
+                return; // let the close handshake run its course
+            }
+
+            // Not open, so close() may not have reached the engine at all. Drop the connection
+            // outright instead. This delivers onClose synchronously on the calling thread, which the
+            // identity check discards because every caller clears `ws` first; the flag above stops
+            // that nested call from coming back through here.
+            try {
+                closeConnection(CloseFrame.ABNORMAL_CLOSE, "Connection superseded");
+            } catch (Exception ignored) {}
+
+            closeTransport();
+        }
+
+        private void closeTransport() {
+            Socket socket = transport;
+            if (socket == null) {
+                // Best effort: before the connect thread republishes it, this read may still see
+                // null. The kill flag, not this, is what guarantees the attempt goes no further.
+                socket = getSocket();
+            }
+
+            if (socket == null) {
+                return;
+            }
+
+            try {
+                socket.close();
+            } catch (Exception ignored) {}
+        }
+
+        private void setReadTimeout(int millis) {
+            Socket socket = getSocket();
+            if (socket == null) {
+                return;
+            }
+
+            try {
+                socket.setSoTimeout(millis);
+            } catch (Exception ignored) {}
+        }
     }
 }
