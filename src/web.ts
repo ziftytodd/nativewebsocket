@@ -38,7 +38,11 @@ export class NativeWebsocketWeb extends WebPlugin implements NativeWebsocketPlug
     this.webSocket.onclose = (closed) => {
       console.log('[NWS] Closed: ' + (closed ? closed.code : 'NoCode') + ' ' + (closed ? closed.reason : 'NoReason'));
       this.webSocket = null;
-      const ret: DisconnectedState = { reason: 'PWA Close', error: 'PWA Close' };
+      const ret: DisconnectedState = {
+        reason: 'PWA Close',
+        code: closed ? closed.code : undefined,
+        error: 'PWA Close',
+      };
       this.notifyListeners('disconnected', ret);
     };
 
@@ -51,6 +55,10 @@ export class NativeWebsocketWeb extends WebPlugin implements NativeWebsocketPlug
       this.webSocket = null;
     }
     return { disconnected: true };
+  }
+
+  async isConnected(): Promise<{ connected: boolean }> {
+    return { connected: this.webSocket !== null && this.webSocket.readyState === WebSocket.OPEN };
   }
 
   async send(options: { message: string }): Promise<{ sent: boolean }> {
