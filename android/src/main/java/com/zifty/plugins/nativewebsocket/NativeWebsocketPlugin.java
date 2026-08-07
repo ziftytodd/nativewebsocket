@@ -13,7 +13,10 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
+import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.exceptions.InvalidDataException;
+import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.handshake.ServerHandshake;
 
 @CapacitorPlugin(name = "NativeWebsocket")
@@ -40,6 +43,7 @@ public class NativeWebsocketPlugin extends Plugin {
     private boolean connecting = false;
     private long connectTimeoutAt = 0;
     private WebSocketClient ws;
+    private Integer handshakeHttpStatus;
 
     private static String toBase64String(ByteBuffer buff) {
         ByteBuffer bb = buff.asReadOnlyBuffer();
@@ -110,6 +114,13 @@ public class NativeWebsocketPlugin extends Plugin {
                         ret.put("data", NativeWebsocketPlugin.toBase64String(bytes));
                         ret.put("binary", true);
                         emitFromClient(this, "message", ret);
+                    }
+
+                    @Override
+                    public void onWebsocketHandshakeReceivedAsClient(WebSocket conn, ClientHandshake request, ServerHandshake response)
+                        throws InvalidDataException {
+                        super.onWebsocketHandshakeReceivedAsClient(conn, request, response);
+                        recordHandshakeStatus(this, response.getHttpStatus());
                     }
 
                     @Override
@@ -240,6 +251,7 @@ public class NativeWebsocketPlugin extends Plugin {
                 connected = true;
                 connecting = false;
                 connectTimeoutAt = 0;
+                handshakeHttpStatus = null; // the handshake succeeded, so there is nothing to report
 
                 JSObject ret = new JSObject();
                 ret.put("connected", true);
@@ -268,6 +280,9 @@ public class NativeWebsocketPlugin extends Plugin {
                 if (reason != null) ret.put("reason", reason);
                 ret.put("code", code);
                 if (error != null) ret.put("error", error);
+
+                Integer httpStatus = resolveHandshakeHttpStatus(reason, error);
+                if (httpStatus != null) ret.put("httpStatus", httpStatus.intValue());
 
                 finished = takeCurrentClient();
                 notifyListeners("disconnected", ret, true);
@@ -303,6 +318,31 @@ public class NativeWebsocketPlugin extends Plugin {
         closeQuietly(discarded);
     }
 
+    private void recordHandshakeStatus(WebSocketClient client, short httpStatus) {
+        CONNECT_LOCK.lock();
+        try {
+            if (client == ws) {
+                handshakeHttpStatus = (int) httpStatus;
+            }
+        } finally {
+            CONNECT_LOCK.unlock();
+        }
+    }
+
+    /**
+     * The HTTP status of the upgrade the current attempt failed on, or null when it is unknown.
+     * Caller holds CONNECT_LOCK. See {@link HandshakeStatus} for why the callback alone is not
+     * enough to cover a rejected handshake.
+     */
+    private Integer resolveHandshakeHttpStatus(String reason, String error) {
+        if (handshakeHttpStatus != null) {
+            return handshakeHttpStatus;
+        }
+
+        Integer fromReason = HandshakeStatus.parse(reason);
+        return (fromReason != null) ? fromReason : HandshakeStatus.parse(error);
+    }
+
     /**
      * Clears every trace of the current connection and hands the client back so the caller can close
      * it once the lock is released. Emits nothing. Caller holds CONNECT_LOCK.
@@ -313,6 +353,7 @@ public class NativeWebsocketPlugin extends Plugin {
         connected = false;
         connecting = false;
         connectTimeoutAt = 0;
+        handshakeHttpStatus = null;
         return previous;
     }
 
