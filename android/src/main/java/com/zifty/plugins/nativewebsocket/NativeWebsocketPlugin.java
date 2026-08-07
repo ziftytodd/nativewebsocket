@@ -14,6 +14,9 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.net.ssl.SSLParameters;
@@ -37,6 +40,34 @@ public class NativeWebsocketPlugin extends Plugin {
      * attempt stays in flight before a fresh connect() may take over from it.
      */
     private static final int CONNECT_TIMEOUT_MILLIS = 30000;
+
+    /**
+     * How long a graceful close may run before its transport is dropped anyway. The library has no
+     * close-handshake timeout, and the connection-lost timer only catches a peer that has gone
+     * silent, so without this a peer that keeps answering pings could hold a closed socket open.
+     */
+    private static final long CLOSE_HANDSHAKE_TIMEOUT_MILLIS = 10000;
+
+    /**
+     * Runs the bounded follow-up to a graceful close, and nothing else. One daemon thread shared by
+     * every client, allowed to die whenever no close is outstanding, so an app that never closes a
+     * socket carries no thread at all.
+     */
+    private static final ScheduledThreadPoolExecutor CLOSE_WATCHDOG = newCloseWatchdog();
+
+    private static ScheduledThreadPoolExecutor newCloseWatchdog() {
+        ScheduledThreadPoolExecutor watchdog = new ScheduledThreadPoolExecutor(1, (runnable) -> {
+            Thread thread = new Thread(runnable, "NativeWebsocketCloseWatchdog");
+            thread.setDaemon(true);
+            return thread;
+        });
+        // Without this a cancelled task sits in the queue until its delay elapses, keeping the
+        // thread alive for a close that has already finished.
+        watchdog.setRemoveOnCancelPolicy(true);
+        watchdog.setKeepAliveTime(CLOSE_HANDSHAKE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        watchdog.allowCoreThreadTimeOut(true);
+        return watchdog;
+    }
 
     private final ReentrantLock CONNECT_LOCK = new ReentrantLock();
 
@@ -432,6 +463,9 @@ public class NativeWebsocketPlugin extends Plugin {
          */
         private volatile Socket transport;
 
+        /** Pending force-drop for a graceful close that has not completed yet. */
+        private volatile ScheduledFuture<?> closeWatchdog;
+
         TrackedClient(URI uri, Map<String, String> headers) {
             // The four-argument constructor is the only one that bounds the TCP connect; the shorter
             // ones pass 0, which waits forever.
@@ -518,6 +552,7 @@ public class NativeWebsocketPlugin extends Plugin {
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
+            cancelCloseWatchdog();
             handleDisconnect(this, reason, code, null);
         }
 
@@ -530,19 +565,22 @@ public class NativeWebsocketPlugin extends Plugin {
          * Ends this client for good, whatever stage it has reached. Idempotent, so it is safe to
          * call from a callback of this same client.
          *
-         * <p>An open client is closed gracefully and its transport left to the close handshake, for
-         * which the library has no timeout of its own. What bounds it is the 30s connection-lost
-         * timer this plugin sets on every client: a peer that stops answering is force-closed there.
-         * A peer that keeps answering pings while never answering the close can hold the transport
-         * up beyond that. That costs a lingering socket, not correctness - the client is already
-         * detached and JS has already been told - and a forced post-close teardown is tracked in #6.
+         * <p>An open client is closed gracefully, so the peer sees a proper close frame. The library
+         * has no close-handshake timeout of its own, and the 30s connection-lost timer only catches
+         * a peer that stops answering entirely, so a peer that keeps answering pings while never
+         * answering the close could hold the transport open indefinitely. A one-shot watchdog
+         * therefore drops the transport after {@link #CLOSE_HANDSHAKE_TIMEOUT_MILLIS} if the close
+         * has not completed by then. It re-checks this client's own closed state before acting, is
+         * cancelled as soon as onClose arrives, emits nothing - the client is already detached and
+         * its teardown already reported - and runs at most once, because kill() does.
          *
          * <p>A client that is not open has its transport dropped first, because closing the socket
          * is the only thing that actually stops bytes leaving; the library calls after it are
          * bookkeeping.
          *
          * <p>Must be called with CONNECT_LOCK released: closing takes the client's own monitor,
-         * which its callback threads hold while they block on the lock.
+         * which its callback threads hold while they block on the lock. The watchdog takes no lock
+         * either, and touches nothing but this client's transport.
          */
         void kill() {
             if (killed.getAndSet(true)) {
@@ -553,6 +591,7 @@ public class NativeWebsocketPlugin extends Plugin {
                 try {
                     close();
                 } catch (Exception ignored) {}
+                armCloseWatchdog();
                 return;
             }
 
@@ -572,6 +611,37 @@ public class NativeWebsocketPlugin extends Plugin {
             try {
                 closeConnection(CloseFrame.ABNORMAL_CLOSE, "Connection superseded");
             } catch (Exception ignored) {}
+        }
+
+        /**
+         * Bounds the graceful close started by {@link #kill()}. Harmless if the close beats it: the
+         * task re-reads this client's closed state and does nothing when the handshake finished, so
+         * the arm-versus-onClose race needs no ordering guarantee of its own.
+         */
+        private void armCloseWatchdog() {
+            try {
+                closeWatchdog = CLOSE_WATCHDOG.schedule(
+                    () -> {
+                        if (!isClosed()) {
+                            closeTransport();
+                        }
+                    },
+                    CLOSE_HANDSHAKE_TIMEOUT_MILLIS,
+                    TimeUnit.MILLISECONDS
+                );
+            } catch (Exception ignored) {
+                // The watchdog would not take the task, so bound the close the only other way
+                // available: drop the transport now rather than leave it to the peer.
+                closeTransport();
+            }
+        }
+
+        private void cancelCloseWatchdog() {
+            ScheduledFuture<?> pending = closeWatchdog;
+            if (pending != null) {
+                closeWatchdog = null;
+                pending.cancel(false);
+            }
         }
 
         /**
