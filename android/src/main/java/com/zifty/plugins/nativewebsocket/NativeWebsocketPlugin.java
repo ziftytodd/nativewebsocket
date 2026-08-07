@@ -53,6 +53,18 @@ public class NativeWebsocketPlugin extends Plugin {
     @PluginMethod
     public void connect(PluginCall call) {
         String url = call.getString("url");
+        if (url == null || url.trim().isEmpty()) {
+            call.reject("Must provide a url");
+            return;
+        }
+
+        URI uri;
+        try {
+            uri = new URI(url);
+        } catch (Exception e) {
+            call.reject("Exception occurred: " + e.getMessage());
+            return;
+        }
 
         // Both are closed after the lock is released: closing a live client takes the client's own
         // monitor, which its callback threads hold while they wait for CONNECT_LOCK.
@@ -83,7 +95,7 @@ public class NativeWebsocketPlugin extends Plugin {
             headers.put("Origin", "capacitor://localhost");
 
             try {
-                WebSocketClient client = new WebSocketClient(new URI(url), headers) {
+                WebSocketClient client = new WebSocketClient(uri, headers) {
                     @Override
                     public void onMessage(String message) {
                         JSObject ret = new JSObject();
@@ -141,6 +153,12 @@ public class NativeWebsocketPlugin extends Plugin {
 
     @PluginMethod
     public void send(PluginCall call) {
+        String message = call.getString("message");
+        if (message == null) {
+            call.reject("Must provide a message");
+            return;
+        }
+
         WebSocketClient client;
         CONNECT_LOCK.lock();
         try {
@@ -156,7 +174,7 @@ public class NativeWebsocketPlugin extends Plugin {
         }
 
         try {
-            client.send(call.getString("message"));
+            client.send(message);
             JSObject ret = new JSObject();
             ret.put("sent", true);
             call.resolve(ret);
@@ -169,7 +187,17 @@ public class NativeWebsocketPlugin extends Plugin {
     @PluginMethod
     public void disconnect(PluginCall call) {
         forceDisconnect("Called disconnect");
-        call.resolve(new JSObject());
+        call.resolve(new JSObject().put("disconnected", true));
+    }
+
+    @PluginMethod
+    public void isConnected(PluginCall call) {
+        CONNECT_LOCK.lock();
+        try {
+            call.resolve(new JSObject().put("connected", currentOpenClient() != null));
+        } finally {
+            CONNECT_LOCK.unlock();
+        }
     }
 
     /** The current client if it is live and open, otherwise null. Caller holds CONNECT_LOCK. */
@@ -190,7 +218,7 @@ public class NativeWebsocketPlugin extends Plugin {
             if (client != ws) {
                 stale = client;
             } else {
-                notifyListeners(eventName, data);
+                notifyListeners(eventName, data, true);
             }
         } finally {
             CONNECT_LOCK.unlock();
@@ -215,7 +243,7 @@ public class NativeWebsocketPlugin extends Plugin {
 
                 JSObject ret = new JSObject();
                 ret.put("connected", true);
-                notifyListeners("connected", ret);
+                notifyListeners("connected", ret, true);
             }
         } finally {
             CONNECT_LOCK.unlock();
@@ -242,7 +270,7 @@ public class NativeWebsocketPlugin extends Plugin {
                 if (error != null) ret.put("error", error);
 
                 finished = takeCurrentClient();
-                notifyListeners("disconnected", ret);
+                notifyListeners("disconnected", ret, true);
             }
         } finally {
             CONNECT_LOCK.unlock();
@@ -267,7 +295,7 @@ public class NativeWebsocketPlugin extends Plugin {
             ret.put("disconnected", true);
             ret.put("reason", reason);
             ret.put("code", -1);
-            notifyListeners("disconnected", ret);
+            notifyListeners("disconnected", ret, true);
         } finally {
             CONNECT_LOCK.unlock();
         }
