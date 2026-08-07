@@ -1,12 +1,15 @@
 # node files
 # dist
 node_modules
+bun.lock
 
 # iOS files
 Pods
 Podfile.lock
 Build
 xcuserdata
+.build
+.swiftpm
 
 # macOS files
 .DS_Store
