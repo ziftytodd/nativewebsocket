@@ -7,13 +7,16 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import javax.net.ssl.SSLParameters;
 import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft_6455;
@@ -392,15 +395,24 @@ public class NativeWebsocketPlugin extends Plugin {
      * The plugin's websocket client, extended with the identity and shutdown machinery the library
      * does not offer.
      *
-     * <p>Java-WebSocket 1.5.2 gives an owner no way to cancel a connect attempt that has not yet
-     * sent its upgrade request. {@code close()} reaches the engine only once {@code run()} has sent
-     * the request and started the write thread, and until then the raw socket lives in a
-     * non-volatile field written by the connect thread, so another thread may not even see it.
+     * <p>Java-WebSocket 1.5.2 gives an owner no way to cancel a connect attempt from outside.
+     * {@code close()} reaches the engine only once {@code run()} has sent the upgrade request and
+     * started the write thread, and until then the raw socket lives in a non-volatile field written
+     * by the connect thread, so another thread may not even see it.
      *
-     * <p>Rather than race that field, the client polices itself: {@link #kill()} raises a flag that
-     * the connect thread checks at the last point before the request goes out, and aborts there.
-     * A superseded attempt may therefore still complete a TCP and TLS connection, but it can never
-     * send an upgrade request, so no server-side websocket session is ever opened for it.
+     * <p>So the client polices itself. {@link #kill()} raises a flag, and the connect thread checks
+     * it at every point the library hands control back: before it resolves the host, after the TLS
+     * wrap, and last of all just before the upgrade request is handed over for writing. Each check
+     * runs on the thread that assigned the socket, so it can close its own transport with no
+     * publication question, and each republishes the socket so a killer on another thread can close
+     * it from that point on.
+     *
+     * <p>That narrows the window; it does not close it. The final check still returns to the
+     * library, which then queues the request for the write thread. A kill landing in that gap races
+     * the writer and can lose, in which case one upgrade request reaches the server and the
+     * transport close that follows immediately ends the session it opened. The gap is microseconds
+     * wide and there is no later interception point on this version - {@code onWriteDemand} is
+     * final and the write thread is not reachable - so the residual race is accepted, not solved.
      */
     private final class TrackedClient extends WebSocketClient {
 
@@ -416,24 +428,50 @@ public class NativeWebsocketPlugin extends Plugin {
             // The four-argument constructor is the only one that bounds the TCP connect; the shorter
             // ones pass 0, which waits forever.
             super(uri, new Draft_6455(), headers, CONNECT_TIMEOUT_MILLIS);
+
+            // The same lookup the library installs by default, wrapped so that the connect thread
+            // publishes its socket and honours a kill before it opens a TCP connection at all. This
+            // is the earliest point the library offers, and it is what makes closeTransport() useful
+            // for the whole of the connect phase rather than only from the handshake onwards.
+            setDnsResolver((target) -> {
+                if (supersededAfterPublishingTransport()) {
+                    throw new UnknownHostException("Connection superseded");
+                }
+                return InetAddress.getByName(target.getHost());
+            });
+        }
+
+        @Override
+        protected void onSetSSLParameters(SSLParameters sslParameters) {
+            // The library's own implementation turns on hostname validation, and its javadoc
+            // requires the super call to keep it.
+            super.onSetSSLParameters(sslParameters);
+
+            // Runs on the connect thread once the socket has been wrapped for TLS but before the
+            // streams are taken. upgradeSocketToSSL() only layers the socket - the TLS handshake
+            // itself happens on the first read or write, which is from here on - so this is where
+            // the read timeout has to be set for the handshake to be bounded at all.
+            if (supersededAfterPublishingTransport()) {
+                throw new IllegalStateException("Connection superseded");
+            }
+
+            setReadTimeout(CONNECT_TIMEOUT_MILLIS);
         }
 
         @Override
         public void onWebsocketHandshakeSentAsClient(WebSocket conn, ClientHandshake request) throws InvalidDataException {
-            // Runs on the connect thread inside startHandshake(), after TCP and any TLS are up but
-            // before the upgrade request is written. This is the last moment a superseded attempt
-            // can be stopped without the server ever seeing a websocket session, so it is where the
-            // kill flag is enforced. Throwing here aborts run() before it writes anything or starts
-            // the write thread.
-            transport = getSocket();
-
-            if (killed.get()) {
-                closeTransport();
+            // Runs on the connect thread inside startHandshake(), after TCP and any TLS setup but
+            // before the library queues the upgrade request. This is the last point at which the
+            // client gets control, so it is where the kill flag is enforced; a kill landing after
+            // this returns races the write thread and can lose, which is the residual gap documented
+            // on the class.
+            if (supersededAfterPublishingTransport()) {
                 throw new InvalidDataException(CloseFrame.NEVER_CONNECTED, "Connection superseded");
             }
 
             // The library then waits indefinitely for the upgrade response - the connection-lost
             // timer only starts once the socket is open. Bound that wait here; onOpen clears it.
+            // Repeated from onSetSSLParameters, which plain ws:// never reaches.
             setReadTimeout(CONNECT_TIMEOUT_MILLIS);
 
             super.onWebsocketHandshakeSentAsClient(conn, request);
@@ -484,6 +522,17 @@ public class NativeWebsocketPlugin extends Plugin {
          * Ends this client for good, whatever stage it has reached. Idempotent, so it is safe to
          * call from a callback of this same client.
          *
+         * <p>An open client is closed gracefully and its transport left to the close handshake, for
+         * which the library has no timeout of its own. What bounds it is the 30s connection-lost
+         * timer this plugin sets on every client: a peer that stops answering is force-closed there.
+         * A peer that keeps answering pings while never answering the close can hold the transport
+         * up beyond that. That costs a lingering socket, not correctness - the client is already
+         * detached and JS has already been told - and a forced post-close teardown is tracked in #6.
+         *
+         * <p>A client that is not open has its transport dropped first, because closing the socket
+         * is the only thing that actually stops bytes leaving; the library calls after it are
+         * bookkeeping.
+         *
          * <p>Must be called with CONNECT_LOCK released: closing takes the client's own monitor,
          * which its callback threads hold while they block on the lock.
          */
@@ -492,25 +541,45 @@ public class NativeWebsocketPlugin extends Plugin {
                 return; // already ended, or being ended further up this same stack
             }
 
-            boolean wasOpen = isOpen();
+            if (isOpen()) {
+                try {
+                    close();
+                } catch (Exception ignored) {}
+                return;
+            }
+
+            // Drop the transport before anything else: it is what stops an upgrade request that has
+            // been queued but not yet written, and what unblocks a connect thread parked in the
+            // library's own I/O.
+            closeTransport();
 
             try {
                 close();
             } catch (Exception ignored) {}
 
-            if (wasOpen) {
-                return; // let the close handshake run its course
-            }
-
-            // Not open, so close() may not have reached the engine at all. Drop the connection
-            // outright instead. This delivers onClose synchronously on the calling thread, which the
-            // identity check discards because every caller clears `ws` first; the flag above stops
-            // that nested call from coming back through here.
+            // close() reaches the engine only once the upgrade request has been written, so end the
+            // connection outright as well. This delivers onClose synchronously on the calling
+            // thread, which the identity check discards because every caller clears `ws` first; the
+            // flag above stops that nested call from coming back through here.
             try {
                 closeConnection(CloseFrame.ABNORMAL_CLOSE, "Connection superseded");
             } catch (Exception ignored) {}
+        }
+
+        /**
+         * Publishes this attempt's socket and reports whether the attempt has been superseded,
+         * closing the transport if so. Only ever called from the connect thread, which is the thread
+         * that assigned the socket, so the value published here is never stale.
+         */
+        private boolean supersededAfterPublishingTransport() {
+            transport = getSocket();
+
+            if (!killed.get()) {
+                return false;
+            }
 
             closeTransport();
+            return true;
         }
 
         private void closeTransport() {
