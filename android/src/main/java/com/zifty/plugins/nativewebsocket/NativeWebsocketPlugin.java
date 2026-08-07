@@ -345,13 +345,22 @@ public class NativeWebsocketPlugin extends Plugin {
     }
 
     /**
-     * The HTTP status of the upgrade the current attempt failed on, or null when it is unknown.
-     * Caller holds CONNECT_LOCK. See {@link HandshakeStatus} for why the callback alone is not
-     * enough to cover a rejected handshake.
+     * The HTTP status of the upgrade this generation failed on, or null when it is unknown. Caller
+     * holds CONNECT_LOCK.
+     *
+     * <p>The recorded slot is generation-scoped and cleared on open, so it stands on its own. The
+     * message parse does not: an established server may close with any reason text it likes,
+     * including one that quotes the library's wording. It is therefore only consulted for a
+     * generation that never opened, where the sole thing that can produce that text is the library
+     * refusing the upgrade. See {@link HandshakeStatus} for why the callback alone is not enough.
      */
     private Integer resolveHandshakeHttpStatus(String reason, String error) {
         if (handshakeHttpStatus != null) {
             return handshakeHttpStatus;
+        }
+
+        if (connected) {
+            return null;
         }
 
         Integer fromReason = HandshakeStatus.parse(reason);

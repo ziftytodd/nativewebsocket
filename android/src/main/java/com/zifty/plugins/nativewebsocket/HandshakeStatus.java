@@ -14,14 +14,18 @@ import java.util.regex.Pattern;
  * therefore never gets there.
  *
  * <p>What does survive is the {@code InvalidHandshakeException} message, which the library formats
- * as {@code "Invalid status code received: %s Status line: %s"} and delivers as the close reason.
- * Reading the status back out of it is the only way to surface a 401 or a 429 on this version of
- * the library. That makes this parser deliberately best-effort: text it does not recognise yields
- * {@code null} and the caller omits the field rather than guessing.
+ * as {@code "Invalid status code received: %s Status line: %s"} and delivers verbatim as the close
+ * reason. Reading the status back out of it is the only way to surface a 401 or a 429 on this
+ * version of the library.
+ *
+ * <p>The match is anchored to the whole of that format, not just the leading phrase, so a close
+ * reason that merely quotes the wording cannot pass and a malformed status token cannot have three
+ * digits picked out of it. Anything unrecognised yields {@code null} and the caller omits the field
+ * rather than guessing.
  */
 final class HandshakeStatus {
 
-    private static final Pattern INVALID_STATUS = Pattern.compile("Invalid status code received:\\s*(\\d{3})(?!\\d)");
+    private static final Pattern INVALID_STATUS = Pattern.compile("Invalid status code received: (\\d{3}) Status line: \\S");
 
     private HandshakeStatus() {}
 
@@ -35,7 +39,7 @@ final class HandshakeStatus {
         }
 
         Matcher matcher = INVALID_STATUS.matcher(text);
-        if (!matcher.find()) {
+        if (!matcher.lookingAt()) {
             return null;
         }
 

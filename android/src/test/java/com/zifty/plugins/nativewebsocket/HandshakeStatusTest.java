@@ -2,31 +2,28 @@ package com.zifty.plugins.nativewebsocket;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import org.java_websocket.drafts.Draft;
+import org.java_websocket.enums.Role;
+import org.java_websocket.exceptions.InvalidHandshakeException;
 import org.junit.Test;
 
-/**
- * The strings under test are the ones Java-WebSocket 1.5.2 produces in
- * {@code Draft.translateHandshakeHttpClient}: {@code "Invalid status code received: %s Status line:
- * %s"}. They are reproduced verbatim here so a dependency bump that changes the wording shows up as
- * a failing test rather than as a silently missing httpStatus field.
- */
 public class HandshakeStatusTest {
 
+    /**
+     * Drives real rejected upgrade responses through Java-WebSocket's own parser rather than
+     * asserting on a transcription of its wording. A dependency bump that reworded
+     * {@code Draft.translateHandshakeHttpClient} would fail here, instead of leaving these tests
+     * green while production quietly stopped reporting httpStatus.
+     */
     @Test
-    public void readsTheStatusOfARejectedUpgrade() {
-        assertEquals(
-            Integer.valueOf(401),
-            HandshakeStatus.parse("Invalid status code received: 401 Status line: HTTP/1.1 401 Unauthorized")
-        );
-        assertEquals(
-            Integer.valueOf(429),
-            HandshakeStatus.parse("Invalid status code received: 429 Status line: HTTP/1.1 429 Too Many Requests")
-        );
-        assertEquals(
-            Integer.valueOf(503),
-            HandshakeStatus.parse("Invalid status code received: 503 Status line: HTTP/1.1 503 Service Unavailable")
-        );
+    public void readsTheStatusJavaWebsocketActuallyReports() {
+        assertEquals(Integer.valueOf(401), statusOfRejectedUpgrade("HTTP/1.1 401 Unauthorized"));
+        assertEquals(Integer.valueOf(429), statusOfRejectedUpgrade("HTTP/1.1 429 Too Many Requests"));
+        assertEquals(Integer.valueOf(503), statusOfRejectedUpgrade("HTTP/1.1 503 Service Unavailable"));
     }
 
     @Test
@@ -40,8 +37,32 @@ public class HandshakeStatusTest {
     }
 
     @Test
-    public void rejectsMalformedStatusTokens() {
-        assertNull(HandshakeStatus.parse("Invalid status code received: 4010 Status line: garbage"));
+    public void rejectsAnythingOutsideTheLibrarysExactFormat() {
+        // Malformed status token: three digits are present but the format does not hold.
+        assertNull(HandshakeStatus.parse("Invalid status code received: 401x Status line: HTTP/1.1 401x Nope"));
+        assertNull(HandshakeStatus.parse("Invalid status code received: 4010 Status line: HTTP/1.1 4010 Nope"));
         assertNull(HandshakeStatus.parse("Invalid status code received: HTTP/1.1 Status line: garbage"));
+        // Truncated: no status line follows.
+        assertNull(HandshakeStatus.parse("Invalid status code received: 401 Status line: "));
+        // A server's own close reason that merely quotes the wording must not be mistaken for one.
+        assertNull(HandshakeStatus.parse("Rejected: Invalid status code received: 401 Status line: HTTP/1.1 401 Unauthorized"));
+    }
+
+    /**
+     * The plugin sees this text as the close reason: the library throws InvalidHandshakeException
+     * out of the draft, and WebSocketImpl passes its message straight through to onClose.
+     */
+    private static Integer statusOfRejectedUpgrade(String statusLine) {
+        String response = statusLine + "\r\nServer: test\r\nContent-Length: 0\r\n\r\n";
+        ByteBuffer buffer = ByteBuffer.wrap(response.getBytes(StandardCharsets.US_ASCII));
+
+        try {
+            Draft.translateHandshakeHttp(buffer, Role.CLIENT);
+        } catch (InvalidHandshakeException e) {
+            return HandshakeStatus.parse(e.getMessage());
+        }
+
+        fail("Java-WebSocket accepted \"" + statusLine + "\" as an upgrade response");
+        return null;
     }
 }
