@@ -1,14 +1,21 @@
 import { WebPlugin } from '@capacitor/core';
 import type { NativeWebsocketPlugin } from './definitions';
 export declare class NativeWebsocketWeb extends WebPlugin implements NativeWebsocketPlugin {
-  private webSocket;
-  connect(options: { url: string }): Promise<{
-    result: string;
-  }>;
-  disconnect(): Promise<{
-    disconnected: boolean;
-  }>;
-  send(options: { message: string }): Promise<{
-    sent: boolean;
-  }>;
+    private webSocket;
+    connect(options: {
+        url: string;
+    }): Promise<{
+        result: string;
+    }>;
+    disconnect(): Promise<{
+        disconnected: boolean;
+    }>;
+    isConnected(): Promise<{
+        connected: boolean;
+    }>;
+    send(options: {
+        message: string;
+    }): Promise<{
+        sent: boolean;
+    }>;
 }

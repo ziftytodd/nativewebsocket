@@ -48,6 +48,16 @@
         "slug": "disconnect"
       },
       {
+        "name": "isConnected",
+        "signature": "() => Promise<{ connected: boolean; }>",
+        "parameters": [],
+        "returns": "Promise<{ connected: boolean; }>",
+        "tags": [],
+        "docs": "Resolves true only while the plugin holds a live, open socket.\nUse it to resync after missing an event; it never rejects.",
+        "complexTypes": [],
+        "slug": "isconnected"
+      },
+      {
         "name": "addListener",
         "signature": "(eventName: 'connected', listenerFunc: ConnectedChangeListener) => Promise<PluginListenerHandle>",
         "parameters": [
@@ -172,9 +182,9 @@
         {
           "name": "code",
           "tags": [],
-          "docs": "",
+          "docs": "WebSocket close code, or -1 when the plugin itself tore the socket down.",
           "complexTypes": [],
-          "type": "string | undefined"
+          "type": "number | undefined"
         },
         {
           "name": "error",
@@ -182,6 +192,13 @@
           "docs": "",
           "complexTypes": [],
           "type": "string | undefined"
+        },
+        {
+          "name": "httpStatus",
+          "tags": [],
+          "docs": "HTTP status of a failed upgrade handshake, when the platform exposes it.\nOmitted when the status is not known.",
+          "complexTypes": [],
+          "type": "number | undefined"
         }
       ]
     },
