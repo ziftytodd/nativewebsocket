@@ -6,6 +6,10 @@ Provides native websocket client functionality for iOS and Android
 
 Version 1.0.0 and later require Capacitor 8.
 
+The iOS side is Swift Package Manager only.
+CocoaPods is not supported: as of 1.1.0 the package ships no podspec, so an app whose iOS project integrates through CocoaPods cannot consume this plugin.
+Consuming apps must use Capacitor's Swift Package Manager support, which picks the plugin up through its `Package.swift`.
+
 ## Install
 
 ```bash
