@@ -1,6 +1,6 @@
 {
   "name": "native-websocket",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Provides native websocket client functionality for iOS and Android",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -11,17 +11,16 @@
     "android/build.gradle",
     "dist/",
     "ios/Plugin/",
-    "NativeWebsocket.podspec",
     "Package.swift"
   ],
   "author": "Todd Miller",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ziftytodd/nativewebsocket.git.git"
+    "url": "git+https://github.com/ziftytodd/nativewebsocket.git"
   },
   "bugs": {
-    "url": "https://github.com/ziftytodd/nativewebsocket.git/issues"
+    "url": "https://github.com/ziftytodd/nativewebsocket/issues"
   },
   "keywords": [
     "capacitor",

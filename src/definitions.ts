@@ -6,8 +6,18 @@ export interface ConnectedState {
 
 export interface DisconnectedState {
   reason?: string;
-  code?: string;
+  /**
+   * WebSocket close code. -1 when the plugin itself tore the socket down, and
+   * 0 for a terminal event that carries no close code at all - on iOS the
+   * cancelled, error and peerClosed cases.
+   */
+  code?: number;
   error?: string;
+  /**
+   * HTTP status of a failed upgrade handshake, when the platform exposes it.
+   * Omitted when the status is not known.
+   */
+  httpStatus?: number;
 }
 
 export interface MessageEvent {
@@ -23,6 +33,12 @@ export interface NativeWebsocketPlugin {
   connect(options: { url: string }): Promise<{ result: string }>;
   send(options: { message: string }): Promise<{ sent: boolean }>;
   disconnect(): Promise<{ disconnected: boolean }>;
+
+  /**
+   * Resolves true only while the plugin holds a live, open socket.
+   * Use it to resync after missing an event; it never rejects.
+   */
+  isConnected(): Promise<{ connected: boolean }>;
 
   addListener(eventName: 'connected', listenerFunc: ConnectedChangeListener): Promise<PluginListenerHandle>;
 

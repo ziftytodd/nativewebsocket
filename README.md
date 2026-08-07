@@ -6,6 +6,10 @@ Provides native websocket client functionality for iOS and Android
 
 Version 1.0.0 and later require Capacitor 8.
 
+The iOS side is Swift Package Manager only.
+CocoaPods is not supported: as of 1.1.0 the package ships no podspec, so an app whose iOS project integrates through CocoaPods cannot consume this plugin.
+Consuming apps must use Capacitor's Swift Package Manager support, which picks the plugin up through its `Package.swift`.
+
 ## Install
 
 ```bash
@@ -20,6 +24,7 @@ npx cap sync
 * [`connect(...)`](#connect)
 * [`send(...)`](#send)
 * [`disconnect()`](#disconnect)
+* [`isConnected()`](#isconnected)
 * [`addListener('connected', ...)`](#addlistenerconnected-)
 * [`addListener('disconnected', ...)`](#addlistenerdisconnected-)
 * [`addListener('message', ...)`](#addlistenermessage-)
@@ -68,6 +73,20 @@ disconnect() => Promise<{ disconnected: boolean; }>
 ```
 
 **Returns:** <code>Promise&lt;{ disconnected: boolean; }&gt;</code>
+
+--------------------
+
+
+### isConnected()
+
+```typescript
+isConnected() => Promise<{ connected: boolean; }>
+```
+
+Resolves true only while the plugin holds a live, open socket.
+Use it to resync after missing an event; it never rejects.
+
+**Returns:** <code>Promise&lt;{ connected: boolean; }&gt;</code>
 
 --------------------
 
@@ -139,11 +158,12 @@ addListener(eventName: 'message', listenerFunc: MessageListener) => Promise<Plug
 
 #### DisconnectedState
 
-| Prop         | Type                |
-| ------------ | ------------------- |
-| **`reason`** | <code>string</code> |
-| **`code`**   | <code>string</code> |
-| **`error`**  | <code>string</code> |
+| Prop             | Type                | Description                                                                                                                                                                            |
+| ---------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`reason`**     | <code>string</code> |                                                                                                                                                                                        |
+| **`code`**       | <code>number</code> | WebSocket close code. -1 when the plugin itself tore the socket down, and 0 for a terminal event that carries no close code at all - on iOS the cancelled, error and peerClosed cases. |
+| **`error`**      | <code>string</code> |                                                                                                                                                                                        |
+| **`httpStatus`** | <code>number</code> | HTTP status of a failed upgrade handshake, when the platform exposes it. Omitted when the status is not known.                                                                         |
 
 
 #### MessageEvent
