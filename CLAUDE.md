@@ -39,15 +39,15 @@ State in the PR exactly which verify commands ran; never claim runtime testing t
 
 ## Dependency pins
 
-- The `ziftytodd/Starscream` fork revision appears in THREE committed files: `Package.swift` (SPM), `ios/Podfile` (what `verify:ios` actually builds against), and `Package.resolved` (the SPM lockfile). Move all of them together.
-- `NativeWebsocket.podspec` separately declares the CocoaPods dependency `'Starscream', '4.0.8'`, which is what a consuming app's `pod install` resolves unless that app overrides the source. If the fork revision moves for a behavioral reason, reconcile this declaration deliberately and say so in the PR.
+- Consumer integration is **SPM-only**; there is no podspec and CocoaPods consumption is unsupported (owner decision, issue #5). The Treads app consumes this plugin through Capacitor SPM and `Package.swift`.
+- The `ziftytodd/Starscream` fork revision appears in THREE committed files: `Package.swift` (SPM), `ios/Podfile` (internal only - what `verify:ios` builds against), and `Package.resolved` (the SPM lockfile). Move all of them together.
 - Java-WebSocket is pinned in `android/build.gradle`.
 - Verify library behavior against the pinned source, not against upstream HEAD or documentation from memory.
 
 ## Versioning and release
 
-- Bump `version` in `package.json` in the PR that changes shipped behavior (the podspec reads it automatically).
-- After merge to `main`, a tag named exactly the package version is cut on `main` - bare `X.Y.Z` with no `v` prefix, because `NativeWebsocket.podspec` resolves its source tag as the bare version string (the repo currently has no tags, so this convention starts now).
+- Bump `version` in `package.json` in the PR that changes shipped behavior.
+- After merge to `main`, a tag named exactly the package version is cut on `main` - bare `X.Y.Z` with no `v` prefix (the repo's established convention).
 - Treads must always pin this plugin to a tag or SHA on `main`, never a branch. A Treads PR may point at a plugin PR branch for local testing but must not merge in that state.
 
 ## Ways of working
