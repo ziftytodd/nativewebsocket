@@ -154,12 +154,12 @@ addListener(eventName: 'message', listenerFunc: MessageListener) => Promise<Plug
 
 #### DisconnectedState
 
-| Prop             | Type                | Description                                                                                                    |
-| ---------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **`reason`**     | <code>string</code> |                                                                                                                |
-| **`code`**       | <code>number</code> | WebSocket close code, or -1 when the plugin itself tore the socket down.                                       |
-| **`error`**      | <code>string</code> |                                                                                                                |
-| **`httpStatus`** | <code>number</code> | HTTP status of a failed upgrade handshake, when the platform exposes it. Omitted when the status is not known. |
+| Prop             | Type                | Description                                                                                                                                        |
+| ---------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`reason`**     | <code>string</code> |                                                                                                                                                    |
+| **`code`**       | <code>number</code> | WebSocket close code. -1 when the plugin itself tore the socket down, and 0 when the socket failed without the native layer learning a close code. |
+| **`error`**      | <code>string</code> |                                                                                                                                                    |
+| **`httpStatus`** | <code>number</code> | HTTP status of a failed upgrade handshake, when the platform exposes it. Omitted when the status is not known.                                     |
 
 
 #### MessageEvent

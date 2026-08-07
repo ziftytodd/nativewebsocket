@@ -5,7 +5,8 @@ export interface ConnectedState {
 export interface DisconnectedState {
     reason?: string;
     /**
-     * WebSocket close code, or -1 when the plugin itself tore the socket down.
+     * WebSocket close code. -1 when the plugin itself tore the socket down, and
+     * 0 when the socket failed without the native layer learning a close code.
      */
     code?: number;
     error?: string;
