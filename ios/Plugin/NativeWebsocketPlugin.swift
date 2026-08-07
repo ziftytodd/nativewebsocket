@@ -278,10 +278,12 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             }
 
             // The in-flight guard expired. Close whatever it left behind instead of abandoning it,
-            // so its late callbacks can never act on the socket we are about to create.
+            // so its late callbacks can never act on the socket we are about to create. Silently:
+            // that attempt never opened and JS asked for this replacement itself, so a
+            // `disconnected` here would only confuse the app's reconnect handling.
             if self.socket != nil {
                 print("NWS: Replacing a socket left over from an earlier connect")
-                self.forceDisconnect(reason: "connect-superseded")
+                self.teardownSocket()
             }
 
             self.generationCounter += 1
