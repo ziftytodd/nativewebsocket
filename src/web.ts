@@ -69,7 +69,11 @@ export class NativeWebsocketWeb extends WebPlugin implements NativeWebsocketPlug
       return { sent: true };
     }
 
-    return { sent: false };
+    // Reject like both natives do, rather than resolving { sent: false }: a caller that awaits
+    // send() should not have to check the result to find out the message went nowhere. No
+    // synthetic disconnected event here - the natives emit one from their own teardown paths,
+    // and there is no socket left to tear down.
+    throw new Error('Websocket not connected');
   }
 }
 

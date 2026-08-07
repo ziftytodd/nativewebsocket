@@ -1,6 +1,7 @@
 package com.zifty.plugins.nativewebsocket;
 
 // import java.util.Base64;
+import android.os.SystemClock;
 import android.util.Base64;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -154,7 +155,7 @@ public class NativeWebsocketPlugin extends Plugin {
 
                 ws = client;
                 connecting = true;
-                connectTimeoutAt = System.currentTimeMillis() + CONNECT_TIMEOUT_MILLIS;
+                connectTimeoutAt = SystemClock.elapsedRealtime() + CONNECT_TIMEOUT_MILLIS;
 
                 client.connect();
 
@@ -180,7 +181,10 @@ public class NativeWebsocketPlugin extends Plugin {
             return new JSObject().put("result", "Already Connected");
         }
 
-        if (connecting && (connectTimeoutAt > System.currentTimeMillis())) {
+        // elapsedRealtime, not the wall clock: an NTP correction or a manual date change must not
+        // hold a dead attempt open past 30s, nor supersede a healthy one early. Mirrors the iOS
+        // monotonic guard, with the platform's usual difference that this one counts sleep too.
+        if (connecting && (connectTimeoutAt > SystemClock.elapsedRealtime())) {
             return new JSObject().put("result", "Already trying to connect");
         }
 
@@ -458,6 +462,12 @@ public class NativeWebsocketPlugin extends Plugin {
         private final AtomicBoolean killed = new AtomicBoolean(false);
 
         /**
+         * Decides, once, whether the close handshake or its watchdog gets to bound this client's
+         * transport. Whoever wins the compare-and-set acts; the loser does nothing.
+         */
+        private final AtomicBoolean closeBounded = new AtomicBoolean(false);
+
+        /**
          * The raw socket, republished from the library's non-volatile field by the very thread that
          * assigned it, so other threads can reliably force the transport down from here on.
          */
@@ -570,9 +580,11 @@ public class NativeWebsocketPlugin extends Plugin {
          * a peer that stops answering entirely, so a peer that keeps answering pings while never
          * answering the close could hold the transport open indefinitely. A one-shot watchdog
          * therefore drops the transport after {@link #CLOSE_HANDSHAKE_TIMEOUT_MILLIS} if the close
-         * has not completed by then. It re-checks this client's own closed state before acting, is
-         * cancelled as soon as onClose arrives, emits nothing - the client is already detached and
-         * its teardown already reported - and runs at most once, because kill() does.
+         * has not completed by then. A single compare-and-set on {@link #closeBounded} decides
+         * whether the completing close or the watchdog acts, so the watchdog cannot touch the
+         * transport once onClose has run even if it was already executing. It emits nothing - the
+         * client is already detached and its teardown already reported - and runs at most once,
+         * because kill() does.
          *
          * <p>A client that is not open has its transport dropped first, because closing the socket
          * is the only thing that actually stops bytes leaving; the library calls after it are
@@ -614,15 +626,17 @@ public class NativeWebsocketPlugin extends Plugin {
         }
 
         /**
-         * Bounds the graceful close started by {@link #kill()}. Harmless if the close beats it: the
-         * task re-reads this client's closed state and does nothing when the handshake finished, so
-         * the arm-versus-onClose race needs no ordering guarantee of its own.
+         * Bounds the graceful close started by {@link #kill()}. Harmless if the close beats it:
+         * {@link #closeBounded} decides a single winner between this task and {@link #onClose},
+         * so a task already running when the handshake completes still cannot act. Reading the
+         * client's closed state instead would not be enough - the library invokes onClose before
+         * it publishes CLOSED, so a check that passed could be stale by the next instruction.
          */
         private void armCloseWatchdog() {
             try {
                 closeWatchdog = CLOSE_WATCHDOG.schedule(
                     () -> {
-                        if (!isClosed()) {
+                        if (closeBounded.compareAndSet(false, true)) {
                             closeTransport();
                         }
                     },
@@ -632,11 +646,18 @@ public class NativeWebsocketPlugin extends Plugin {
             } catch (Exception ignored) {
                 // The watchdog would not take the task, so bound the close the only other way
                 // available: drop the transport now rather than leave it to the peer.
-                closeTransport();
+                if (closeBounded.compareAndSet(false, true)) {
+                    closeTransport();
+                }
             }
         }
 
         private void cancelCloseWatchdog() {
+            // Claim the bound before cancelling. cancel(false) cannot stop a task that has already
+            // started, so it is this flag, not the cancellation, that makes "the watchdog cannot
+            // act once the close completed" true rather than merely likely.
+            closeBounded.set(true);
+
             ScheduledFuture<?> pending = closeWatchdog;
             if (pending != null) {
                 closeWatchdog = null;

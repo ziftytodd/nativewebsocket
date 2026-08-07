@@ -167,10 +167,13 @@ public class NativeWebsocketPlugin: CAPPlugin, CAPBridgedPlugin, Starscream.WebS
             return
         }
 
+        // No placeholder when there is no error: a clean close, a cancellation and a keepalive
+        // timeout all carry none, and fabricating one made every close look like a failure.
+        // `emitDisconnected` omits the key, which is what Android has always done.
         let message = error.map { "\($0)" }
         let status = httpStatus(from: error)
         teardownSocket()
-        emitDisconnected(reason: reason, code: code, error: message ?? "Error", httpStatus: status)
+        emitDisconnected(reason: reason, code: code, error: message, httpStatus: status)
     }
 
     /// Tears the socket down whatever state it is in, then always notifies JS.

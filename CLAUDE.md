@@ -27,8 +27,10 @@ The commands that matter:
 - `npm run verify:android` - gradle build + test (the script self-locates JDK 21; do not work around a missing JDK).
 - `npm run verify:web` - alias for the full `npm run build`.
 
-There are no meaningful automated tests (the iOS and Android test files are template stubs).
-Honest verification for a PR is therefore: the builds and lint above, plus review.
+Automated coverage is narrow but real where it exists.
+`android/src/test/java/com/zifty/plugins/nativewebsocket/HandshakeStatusTest.java` is a genuine regression suite for the handshake-status parser: it drives real rejected upgrade responses through Java-WebSocket's own parser rather than asserting on a transcription of its wording, so a dependency bump that reworded the exception fails the build instead of silently dropping `httpStatus`. Run it with `npm run verify:android`.
+Everything else is untested: the plugin classes are bridge-coupled, and the iOS test file is still a template stub.
+Honest verification for a PR is therefore: the builds and lint above, that suite, plus review.
 State in the PR exactly which verify commands ran; never claim runtime testing that did not happen.
 
 ## The public API is a live contract
