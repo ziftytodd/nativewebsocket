@@ -52,5 +52,6 @@ State in the PR exactly which verify commands ran; never claim runtime testing t
 ## Ways of working
 
 - Every change happens on a branch and lands via a PR. No direct commits to `main`, no self-merge.
-- Cross-repo efforts (plugin + Treads, plugin + server) are contract-first and coordinated from the orchestration workspace at `/Users/dev/zifty-server-ops` on the dev Mac Mini; the frozen contract files live in its `contracts/` directory.
+- Cross-repo efforts (plugin + Treads, plugin + server) are contract-first, and every PR in such an effort links the governing contract in its description.
+- The contract files and fleet orchestration live in the Zifty ops workspace; this is deliberately workstation-specific (`/Users/dev/zifty-server-ops` on the dev Mac Mini, where all agent work on this repo runs) and does not apply to other checkouts or CI.
 - Never point tests or scratch scripts at production endpoints, and never send real traffic from a dev machine.
